@@ -221,6 +221,16 @@ export default function ClientGeneratorPage() {
     setDeployResult(null);
     try {
       const payloads = JSON.parse(clientsJson) as ClientPayload[];
+      const outbounds = (() => {
+        try { return JSON.parse(outboundsJson); } catch { return []; }
+      })();
+      const routing = (() => {
+        try { return JSON.parse(routingJson); } catch { return []; }
+      })();
+
+      if (outbounds.length === 0) {
+        messageApi.warning('⚠️ 出站规则为空，将只创建客户端');
+      }
 
       // Step 1: Bulk create clients
       const msg = await HttpUtil.post('/panel/api/clients/bulkCreate', payloads, JSON_HEADERS);
@@ -228,24 +238,75 @@ export default function ClientGeneratorPage() {
       const created = result?.created ?? 0;
       const skipped = result?.skipped ?? [];
 
-      if (msg?.success) {
-        setDeployResult({
-          success: true,
-          msg: `成功创建 ${created} 个客户端${skipped.length > 0 ? `，${skipped.length} 个跳过` : ''}`,
-          created,
-        });
-        messageApi.success(`✅ 已创建 ${created} 个客户端！`);
-
-        // Step 2: Optionally trigger Xray restart
-        try {
-          await HttpUtil.post('/panel/api/server/restartXrayService');
-          messageApi.info('🔄 Xray 配置已重载');
-        } catch {
-          messageApi.warning('⚠️ 客户端已创建，但 Xray 配置重载失败，请手动重启');
-        }
-      } else {
+      if (!msg?.success) {
         setDeployResult({ success: false, msg: msg?.msg || '部署失败' });
         messageApi.error(`部署失败：${msg?.msg || '未知错误'}`);
+        setSubmitting(false);
+        return;
+      }
+
+      setDeployResult({
+        success: true,
+        msg: `成功创建 ${created} 个客户端${skipped.length > 0 ? `，${skipped.length} 个跳过` : ''}`,
+        created,
+      });
+      messageApi.success(`✅ 已创建 ${created} 个客户端！`);
+
+      // Step 2: Add outbounds and routing rules to Xray config
+      if (outbounds.length > 0) {
+        const configMsg = await HttpUtil.post('/panel/api/xray/', undefined, { silent: true });
+        if (configMsg?.success && typeof configMsg.obj === 'string') {
+          const xrayConfig = JSON.parse(configMsg.obj);
+
+          // Collect existing outbound tags
+          const existingTags = new Set(
+            (xrayConfig.outbounds ?? []).map((o: { tag?: string }) => o.tag),
+          );
+
+          // Add new outbounds (skip duplicates by tag)
+          const addedOutbounds: unknown[] = [];
+          for (const ob of outbounds) {
+            if (ob.tag && !existingTags.has(ob.tag)) {
+              xrayConfig.outbounds = xrayConfig.outbounds ?? [];
+              xrayConfig.outbounds.push(ob);
+              addedOutbounds.push(ob);
+            }
+          }
+
+          // Add routing rules
+          if (xrayConfig.routing?.rules && routing.length > 0) {
+            const existingRuleTags = new Set(
+              (xrayConfig.routing.rules ?? []).map((r: { outboundTag?: string }) =>
+                Array.isArray(r.outboundTag) ? r.outboundTag[0] : r.outboundTag,
+              ),
+            );
+            for (const rule of routing) {
+              const tag = Array.isArray(rule.outboundTag) ? rule.outboundTag[0] : rule.outboundTag;
+              if (tag && !existingRuleTags.has(tag)) {
+                xrayConfig.routing.rules.push(rule);
+              }
+            }
+          }
+
+          // Save updated config
+          const saveMsg = await HttpUtil.post('/panel/api/xray/update', {
+            xraySetting: JSON.stringify(xrayConfig, null, 2),
+            outboundTestUrl: 'https://www.google.com/generate_204',
+          });
+          if (saveMsg?.success) {
+            messageApi.success(`✅ 已添加 ${addedOutbounds.length} 个出站规则`);
+          } else {
+            messageApi.warning('⚠️ 客户端已创建，但出站规则保存失败');
+          }
+        }
+      }
+
+      // Step 3: Restart Xray
+      try {
+        await HttpUtil.post('/panel/api/server/restartXrayService');
+        messageApi.info('🔄 Xray 配置已重载');
+      } catch {
+        messageApi.warning('⚠️ 配置已保存，但 Xray 重载失败，请手动重启');
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '未知错误';
@@ -254,7 +315,7 @@ export default function ClientGeneratorPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [clientsJson, messageApi]);
+  }, [clientsJson, outboundsJson, routingJson, messageApi]);
 
   const getDeployStatusIcon = () => {
     if (!deployResult) return null;
