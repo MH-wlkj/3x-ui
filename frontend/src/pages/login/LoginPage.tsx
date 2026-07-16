@@ -64,12 +64,19 @@ export default function LoginPage() {
     return () => window.clearInterval(timer);
   }, [headlineWords.length]);
 
-  // 点击登录后直接进入面板查看（绕过后端）
   const onSubmit = useCallback(async (values: LoginForm) => {
     setSubmitting(true);
-    // 直接跳转到面板主页
-    window.location.href = basePath + 'panel/';
-  }, []);
+    const { username, password, twoFactorCode } = values;
+    const msg = await HttpUtil.post<{ sessionKey: string }>('/login', {
+      username,
+      password,
+      twoFactorCode: twoFactorCode || undefined,
+    });
+    setSubmitting(false);
+    if (msg.success) {
+      window.location.href = basePath + 'panel/';
+    }
+  }, [basePath]);
 
   const onLangChange = useCallback((next: string) => {
     setLang(next);
