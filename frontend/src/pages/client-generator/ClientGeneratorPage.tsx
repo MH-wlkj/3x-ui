@@ -253,50 +253,67 @@ export default function ClientGeneratorPage() {
       messageApi.success(`✅ 已创建 ${created} 个客户端！`);
 
       // Step 2: Add outbounds and routing rules to Xray config
-      if (outbounds.length > 0) {
+      if (outbounds.length > 0 || routing.length > 0) {
         const configMsg = await HttpUtil.post('/panel/api/xray/', undefined, { silent: true });
         if (configMsg?.success && typeof configMsg.obj === 'string') {
-          const xrayConfig = JSON.parse(configMsg.obj);
+          const parsed = JSON.parse(configMsg.obj);
+          const settings = parsed.xraySetting as {
+            outbounds?: unknown[];
+            routing?: { rules?: unknown[] };
+          };
 
-          // Collect existing outbound tags
+          // Collect existing outbound tags from the real config
           const existingTags = new Set(
-            (xrayConfig.outbounds ?? []).map((o: { tag?: string }) => o.tag),
+            (settings.outbounds ?? []).map((o: unknown) => (o as { tag?: string }).tag),
           );
 
-          // Add new outbounds (skip duplicates by tag)
+          // Append new outbounds (skip duplicates by tag)
           const addedOutbounds: unknown[] = [];
           for (const ob of outbounds) {
-            if (ob.tag && !existingTags.has(ob.tag)) {
-              xrayConfig.outbounds = xrayConfig.outbounds ?? [];
-              xrayConfig.outbounds.push(ob);
+            const tag = (ob as { tag?: string }).tag;
+            if (tag && !existingTags.has(tag)) {
+              settings.outbounds ??= [];
+              settings.outbounds.push(ob);
               addedOutbounds.push(ob);
             }
           }
 
-          // Add routing rules
-          if (xrayConfig.routing?.rules && routing.length > 0) {
-            const existingRuleTags = new Set(
-              (xrayConfig.routing.rules ?? []).map((r: { outboundTag?: string }) =>
-                Array.isArray(r.outboundTag) ? r.outboundTag[0] : r.outboundTag,
-              ),
-            );
+          // Collect existing routing rule tags for dedup
+          settings.routing ??= {};
+          settings.routing.rules ??= [];
+          const existingRuleTags = new Set(
+            (settings.routing.rules ?? []).map((r: unknown) => {
+              const rt = r as { outboundTag?: string | string[] };
+              return Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
+            }),
+          );
+
+          // Append new routing rules (skip duplicates by outboundTag)
+          let addedRouting = 0;
+          if (routing.length > 0) {
             for (const rule of routing) {
-              const tag = Array.isArray(rule.outboundTag) ? rule.outboundTag[0] : rule.outboundTag;
+              const rt = rule as { outboundTag?: string | string[] };
+              const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
               if (tag && !existingRuleTags.has(tag)) {
-                xrayConfig.routing.rules.push(rule);
+                settings.routing.rules.push(rule);
+                existingRuleTags.add(tag);
+                addedRouting++;
               }
             }
           }
 
-          // Save updated config
+          // Save updated config — send only the xraySetting part
           const saveMsg = await HttpUtil.post('/panel/api/xray/update', {
-            xraySetting: JSON.stringify(xrayConfig, null, 2),
-            outboundTestUrl: 'https://www.google.com/generate_204',
+            xraySetting: JSON.stringify(settings, null, 2),
+            outboundTestUrl: (parsed as { outboundTestUrl?: string }).outboundTestUrl || 'https://www.google.com/generate_204',
           });
           if (saveMsg?.success) {
-            messageApi.success(`✅ 已添加 ${addedOutbounds.length} 个出站规则`);
+            const parts: string[] = [];
+            if (addedOutbounds.length) parts.push(`${addedOutbounds.length} 个出站`);
+            if (addedRouting) parts.push(`${addedRouting} 个路由`);
+            messageApi.success(`✅ 已添加 ${parts.join('、')} 规则`);
           } else {
-            messageApi.warning('⚠️ 客户端已创建，但出站规则保存失败');
+            messageApi.warning('⚠️ 客户端已创建，但规则保存失败');
           }
         }
       }
