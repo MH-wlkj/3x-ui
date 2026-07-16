@@ -24,6 +24,7 @@ import {
   CloseCircleOutlined,
 } from '@ant-design/icons';
 import { ClipboardManager, HttpUtil, RandomUtil, SizeFormatter } from '@/utils';
+const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } } as const;
 import { useTheme } from '@/hooks/useTheme';
 import AppSidebar from '@/layouts/AppSidebar';
 import '@/styles/page-shell.css';
@@ -222,7 +223,7 @@ export default function ClientGeneratorPage() {
       const payloads = JSON.parse(clientsJson) as ClientPayload[];
 
       // Step 1: Bulk create clients
-      const msg = await HttpUtil.post('/panel/api/clients/bulkCreate', payloads);
+      const msg = await HttpUtil.post('/panel/api/clients/bulkCreate', payloads, JSON_HEADERS);
       const result = msg?.obj as { created?: number; skipped?: { email?: string; reason?: string }[] } | undefined;
       const created = result?.created ?? 0;
       const skipped = result?.skipped ?? [];
