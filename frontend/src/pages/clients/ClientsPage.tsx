@@ -75,6 +75,7 @@ const ClientBulkAddModal = lazy(() => import('./ClientBulkAddModal'));
 const ClientBulkAdjustModal = lazy(() => import('./ClientBulkAdjustModal'));
 const FilterDrawer = lazy(() => import('./FilterDrawer'));
 const SubLinksModal = lazy(() => import('./SubLinksModal'));
+const BatchQrExportModal = lazy(() => import('./BatchQrExportModal'));
 const BulkAddToGroupModal = lazy(() => import('./BulkAddToGroupModal'));
 const BulkAttachInboundsModal = lazy(() => import('./BulkAttachInboundsModal'));
 const BulkDetachInboundsModal = lazy(() => import('./BulkDetachInboundsModal'));
@@ -240,6 +241,7 @@ export default function ClientsPage() {
   const [bulkAddOpen, setBulkAddOpen] = useState(false);
   const [bulkAdjustOpen, setBulkAdjustOpen] = useState(false);
   const [subLinksOpen, setSubLinksOpen] = useState(false);
+  const [batchQrOpen, setBatchQrOpen] = useState(false);
   const [bulkGroupOpen, setBulkGroupOpen] = useState(false);
   const [bulkAttachOpen, setBulkAttachOpen] = useState(false);
   const [bulkDetachOpen, setBulkDetachOpen] = useState(false);
@@ -1128,6 +1130,12 @@ export default function ClientsPage() {
                                     label: t('pages.clients.subLinks'),
                                     onClick: () => setSubLinksOpen(true),
                                   },
+                                  {
+                                    key: 'batchQr',
+                                    icon: <QrcodeOutlined />,
+                                    label: t('pages.clients.batchQrExport'),
+                                    onClick: () => setBatchQrOpen(true),
+                                  },
                                 ]
                                 : [
                                   {
@@ -1534,6 +1542,14 @@ export default function ClientsPage() {
             clients={clients}
             subSettings={subSettings}
             onOpenChange={setSubLinksOpen}
+          />
+        </LazyMount>
+        <LazyMount when={batchQrOpen}>
+          <BatchQrExportModal
+            open={batchQrOpen}
+            emails={selectedRowKeys}
+            clients={clients}
+            onOpenChange={setBatchQrOpen}
           />
         </LazyMount>
         <LazyMount when={bulkGroupOpen}>
