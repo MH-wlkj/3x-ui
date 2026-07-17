@@ -164,33 +164,11 @@ export default function BatchQrExportModal({
     return () => { cancelled = true; };
   }, [open, emails, byEmail, t]);
 
-  const totalLinks = useMemo(
-    () => rows.reduce((sum, r) => sum + r.links.length, 0),
-    [rows],
-  );
 
-  // Build a CSV text from all rows
-  const csvText = useMemo(() => {
-    const header = 'Email,SubID,Link,Protocol';
-    const lines = rows.flatMap((r) =>
-      r.links.length > 0
-        ? r.links.map((link) => {
-            const proto = protocolFromLink(link);
-            return `${r.email},${r.subId},${link},${proto}`;
-          })
-        : [`${r.email},${r.subId},,`],
-    );
-    return [header, ...lines].join('\n');
-  }, [rows]);
-
-  // Build tab-separated text for clipboard
+  // Build plain links text for clipboard (just URLs, one per line)
   const allText = useMemo(() => {
     return rows
-      .flatMap((r) =>
-        r.links.length > 0
-          ? r.links.map((link) => `${r.email}\t${link}`)
-          : [`${r.email}\t`],
-      )
+      .flatMap((r) => r.links)
       .join('\n');
   }, [rows]);
 
@@ -289,7 +267,7 @@ export default function BatchQrExportModal({
 </head>
 <body>
 <h1>📋 Batch QR Export</h1>
-<div class="meta">Exported: ${stamp} • ${rows.length} clients • ${totalLinks} links</div>
+<div class="meta">Exported: ${stamp} • ${rows.length} clients • ${rows.reduce((s, r) => s + r.links.length, 0)} links</div>
 <table>
 <thead><tr>
   <th>${escapeHtml(t('pages.clients.client'))}</th>
@@ -320,18 +298,78 @@ ${rowsHtml}
     }
   }
 
-  function exportAsCsv() {
-    const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    a.href = url;
-    a.download = `batch-links-${stamp}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-    messageApi.success(t('pages.clients.batchQrExported'));
+  async function exportAsXlsx() {
+    setExportingHtml(true);
+    try {
+      // Collect QR code data URLs from rendered components
+      const qrDataUrls = new Map<string, string>();
+      for (const row of rows) {
+        if (row.links.length === 0) continue;
+        const container = qrRefs.current.get(row.email);
+        if (!container) continue;
+        const svgEl = container.querySelector('svg') as SVGSVGElement | null;
+        if (!svgEl) continue;
+        const clone = svgEl.cloneNode(true) as SVGSVGElement;
+        const dataUrl = await svgToDataUrl(clone, 150);
+        if (dataUrl) qrDataUrls.set(row.email, dataUrl);
+      }
+
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const tableRows = rows
+        .filter((r) => r.links.length > 0)
+        .map((r) => {
+          const linksText = r.links.join('\n');
+          const qrImg = qrDataUrls.has(r.email)
+            ? `<img src="${qrDataUrls.get(r.email)}" alt="QR" width="100" height="100" />`
+            : '';
+          return `<tr>
+            <td style="padding:8px;border:1px solid #ccc;vertical-align:top;white-space:nowrap">${escapeHtml(r.email)}</td>
+            <td style="padding:8px;border:1px solid #ccc;vertical-align:top;word-break:break-all;font-size:11px">${escapeHtml(linksText)}</td>
+            <td style="padding:8px;border:1px solid #ccc;text-align:center;vertical-align:middle">${qrImg}</td>
+          </tr>`;
+        })
+        .join('\n');
+
+      // Generate an HTML table saved as .xls — Excel opens it natively
+      const html = `<html xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns="http://www.w3.org/TR/REC-html40">
+<head><meta charset="UTF-8">
+<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>
+<x:Name>Export</x:Name><x:WorksheetOptions><x:DisplayGridlines/></x:WorksheetOptions>
+</x:ExcelWorksheet></x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]-->
+<style>
+th { background:#4472c4; color:#fff; padding:10px 12px; font-size:13px; border:1px solid #4472c4; }
+td { padding:8px; border:1px solid #ccc; vertical-align:top; }
+</style>
+</head><body>
+<table>
+<thead><tr>
+  <th>名字</th>
+  <th>链接</th>
+  <th>二维码</th>
+</tr></thead>
+<tbody>
+${tableRows}
+</tbody>
+</table>
+</body></html>`;
+
+      const blob = new Blob([html], { type: 'application/vnd.ms-excel;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `batch-links-${stamp}.xls`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      messageApi.success(t('pages.clients.batchQrExported'));
+    } catch {
+      messageApi.error(t('somethingWentWrong'));
+    } finally {
+      setExportingHtml(false);
+    }
   }
 
   const columns: TableColumnType<ClientLinkRow>[] = useMemo(
@@ -438,23 +476,23 @@ ${rowsHtml}
             <div style={{ display: 'flex', gap: 8 }}>
               <Button
                 icon={<CopyOutlined />}
-                disabled={!hasAny}
-                onClick={() => copy(allText, t('pages.clients.subLinksCopiedAll', { count: totalLinks }))}
+                disabled={!hasLinks}
+                onClick={() => copy(allText, t('copied'))}
               >
-                {t('pages.clients.subLinksCopyAll')}
+                {t('pages.clients.batchQrCopyLinks')}
               </Button>
               <Button
                 icon={<FileTextOutlined />}
-                disabled={!hasAny}
-                onClick={exportAsCsv}
+                disabled={!hasLinks}
+                loading={exportingHtml}
+                onClick={exportAsXlsx}
               >
-                {t('pages.clients.batchQrExportCsv')}
+                {t('pages.clients.batchQrExportXlsx')}
               </Button>
               <Button
                 type="primary"
                 icon={<TableOutlined />}
                 disabled={!hasLinks}
-                loading={exportingHtml}
                 onClick={exportAsHtml}
               >
                 {t('pages.clients.batchQrExportHtml')}
