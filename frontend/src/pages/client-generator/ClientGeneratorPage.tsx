@@ -1,25 +1,29 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Button,
   Card,
   Col,
+  Collapse,
   ConfigProvider,
   Form,
   Input,
   InputNumber,
   Layout,
   Row,
+  Select,
   Space,
-  message,
-  Typography,
+  Table,
   Tag,
-  Collapse,
+  Typography,
+  message,
 } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import {
   CopyOutlined,
-  ThunderboltOutlined,
+  EyeOutlined,
   SendOutlined,
+  ThunderboltOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
 } from '@ant-design/icons';
@@ -34,12 +38,15 @@ import '@/styles/utils.css';
 const { TextArea } = Input;
 const { Title, Text } = Typography;
 
+// ─── Types ────────────────────────────────────────────────────────────
+
 interface NodeLine {
   ip: string;
   port: number;
   user: string;
   pass: string;
-  customPrefix?: string; // 自定义前缀 (5段格式: 前缀:IP:端口:账号:密码)
+  customPrefix?: string;
+  remark?: string;
 }
 
 interface ClientPayload {
@@ -59,6 +66,25 @@ interface ClientPayload {
   inboundIds: number[];
 }
 
+interface InboundOption {
+  id: number;
+  remark?: string;
+  tag?: string;
+  protocol?: string;
+  port?: number;
+}
+
+interface PreviewRow {
+  key: string;
+  email: string;
+  nodeAddr: string;
+  nodePort: number;
+  nodeUser: string;
+  protocol: string;
+  traffic: string;
+  inboundLabel: string;
+}
+
 interface GeneratorFormValues {
   nodeInput: string;
   emailPrefix: string;
@@ -68,6 +94,7 @@ interface GeneratorFormValues {
   namingMode: 'ip' | 'seq';
   startNum: number;
   padLength: number;
+  outboundProtocol: 'socks' | 'http';
 }
 
 const DEFAULT_VALUES: GeneratorFormValues = {
@@ -75,10 +102,11 @@ const DEFAULT_VALUES: GeneratorFormValues = {
   emailPrefix: 'MZ1-',
   emailSuffix: '',
   totalGB: 0,
-  inboundId: 1,
+  inboundId: 0,
   namingMode: 'ip',
   startNum: 1,
   padLength: 2,
+  outboundProtocol: 'socks',
 };
 
 function parseNodes(text: string): NodeLine[] {
@@ -96,6 +124,7 @@ function parseNodes(text: string): NodeLine[] {
         port: parseInt(parts[2], 10),
         user: parts[3],
         pass: parts.slice(4).join(':'),
+        remark: parts[0],
       });
     // 4段格式: IP:端口:账号:密码
     } else if (parts.length >= 4) {
@@ -110,6 +139,13 @@ function parseNodes(text: string): NodeLine[] {
   return nodes;
 }
 
+function formatInboundLabel(ib: InboundOption): string {
+  const proto = ib.protocol || '?';
+  const label = ib.remark || ib.tag || `#${ib.id}`;
+  const port = ib.port ? `:${ib.port}` : '';
+  return `${proto} | ${label}${port}`;
+}
+
 export default function ClientGeneratorPage() {
   const { t: _t } = useTranslation();
   const { isDark, isUltra, antdThemeConfig } = useTheme();
@@ -117,6 +153,10 @@ export default function ClientGeneratorPage() {
 
   const [formValues, setFormValues] = useState<GeneratorFormValues>(DEFAULT_VALUES);
   const [namingMode, setNamingMode] = useState<'ip' | 'seq'>('ip');
+
+  const [inbounds, setInbounds] = useState<InboundOption[]>([]);
+  const [inboundsLoading, setInboundsLoading] = useState(false);
+  const [parsedNodes, setParsedNodes] = useState<NodeLine[]>([]);
 
   const [clientsJson, setClientsJson] = useState('');
   const [outboundsJson, setOutboundsJson] = useState('');
@@ -133,11 +173,55 @@ export default function ClientGeneratorPage() {
     return classes.join(' ');
   }, [isDark, isUltra]);
 
+  // ── 自动加载入站列表 ─────────────────────────────────────────────
+  useEffect(() => {
+    let cancelled = false;
+    setInboundsLoading(true);
+    (async () => {
+      try {
+        const msg = await HttpUtil.get('/panel/api/inbounds/options', undefined, { silent: true }) as {
+          success?: boolean; obj?: InboundOption[];
+        };
+        if (!cancelled && msg?.success && Array.isArray(msg.obj)) {
+          setInbounds(msg.obj!);
+          // 自动选中第一个入站
+          setFormValues((prev) => {
+            if (prev.inboundId === 0 && msg.obj!.length > 0) {
+              return { ...prev, inboundId: msg.obj![0].id };
+            }
+            return prev;
+          });
+        }
+      } finally {
+        if (!cancelled) setInboundsLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  const selectedInbound = useMemo(
+    () => inbounds.find((ib) => ib.id === formValues.inboundId),
+    [inbounds, formValues.inboundId],
+  );
+
+  // ── 输入节点时实时解析 ──────────────────────────────────────────
+  const onNodeInputChange = useCallback((value: string) => {
+    setFormValues((prev) => ({ ...prev, nodeInput: value }));
+    const nodes = parseNodes(value);
+    setParsedNodes(nodes);
+  }, []);
+
+  // ── 生成 ─────────────────────────────────────────────────────────
   const onGenerate = useCallback(() => {
-    const nodes = parseNodes(formValues.nodeInput);
+    const nodes = parsedNodes;
 
     if (nodes.length === 0) {
       messageApi.error('请先输入有效的节点列表（格式：IP:端口:账号:密码）');
+      return;
+    }
+
+    if (!selectedInbound) {
+      messageApi.error('请选择一个目标入站');
       return;
     }
 
@@ -154,10 +238,8 @@ export default function ClientGeneratorPage() {
         emailName = `${formValues.emailPrefix}${numStr}${formValues.emailSuffix}`;
         currentNum++;
       } else if (node.customPrefix) {
-        // 写入了自定义前缀时，不使用默认前缀
         emailName = `${node.customPrefix}${node.ip}${formValues.emailSuffix}`;
       } else {
-        // 未写自定义前缀时，使用全局默认前缀
         emailName = `${formValues.emailPrefix}${node.ip}${formValues.emailSuffix}`;
       }
 
@@ -178,9 +260,10 @@ export default function ClientGeneratorPage() {
         inboundIds: [formValues.inboundId],
       });
 
+      const proto = formValues.outboundProtocol;
       outbounds.push({
         tag: emailName,
-        protocol: 'socks',
+        protocol: proto,
         settings: {
           servers: [{
             address: node.ip,
@@ -204,8 +287,9 @@ export default function ClientGeneratorPage() {
     setGenerated(true);
     setDeployResult(null);
     messageApi.success(`✅ 生成成功！共 ${nodes.length} 个节点`);
-  }, [formValues, messageApi]);
+  }, [parsedNodes, formValues, selectedInbound, messageApi]);
 
+  // ── 复制 ─────────────────────────────────────────────────────────
   const onCopy = useCallback(async (text: string, label: string) => {
     const ok = await ClipboardManager.copyText(text);
     if (ok) {
@@ -215,6 +299,7 @@ export default function ClientGeneratorPage() {
     }
   }, [messageApi]);
 
+  // ── 一键部署 ──────────────────────────────────────────────────────
   const onDeploy = useCallback(async () => {
     if (!clientsJson) return;
     setSubmitting(true);
@@ -346,6 +431,132 @@ export default function ClientGeneratorPage() {
     await onCopy(combined, '全部配置');
   }, [clientsJson, outboundsJson, routingJson, onCopy]);
 
+  // ── 预览表格列 ──────────────────────────────────────────────────
+  const previewColumns: ColumnsType<PreviewRow> = useMemo(() => [
+    {
+      title: '#',
+      key: 'index',
+      width: 50,
+      render: (_v, _r, idx) => idx + 1,
+    },
+    {
+      title: '邮箱',
+      dataIndex: 'email',
+      key: 'email',
+      width: 200,
+      ellipsis: true,
+    },
+    {
+      title: '上游节点',
+      key: 'node',
+      width: 200,
+      render: (_v, record) => (
+        <Text code style={{ fontSize: 12 }}>
+          {record.nodeAddr}:{record.nodePort}
+        </Text>
+      ),
+    },
+    {
+      title: '账号',
+      dataIndex: 'nodeUser',
+      key: 'nodeUser',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: '出站协议',
+      dataIndex: 'protocol',
+      key: 'protocol',
+      width: 100,
+      render: (p: string) => (
+        <Tag color={p === 'socks' ? 'blue' : 'green'}>{p.toUpperCase()}</Tag>
+      ),
+    },
+    {
+      title: '流量',
+      dataIndex: 'traffic',
+      key: 'traffic',
+      width: 100,
+    },
+    {
+      title: '目标入站',
+      dataIndex: 'inboundLabel',
+      key: 'inboundLabel',
+      ellipsis: true,
+      render: (label: string) => <Tag color="geekblue" style={{ fontSize: 11 }}>{label}</Tag>,
+    },
+  ], []);
+
+  const previewData = useMemo<PreviewRow[]>(() => {
+    if (!generated || parsedNodes.length === 0) return [];
+    const inboundLabel = selectedInbound ? formatInboundLabel(selectedInbound) : `#${formValues.inboundId}`;
+    const trafficStr = formValues.totalGB > 0 ? `${formValues.totalGB} GB` : '∞';
+    return parsedNodes.map((node, idx) => {
+      let email: string;
+      if (formValues.namingMode === 'seq') {
+        let numStr = (formValues.startNum + idx).toString();
+        while (numStr.length < formValues.padLength) numStr = '0' + numStr;
+        email = `${formValues.emailPrefix}${numStr}${formValues.emailSuffix}`;
+      } else if (node.customPrefix) {
+        email = `${node.customPrefix}${node.ip}${formValues.emailSuffix}`;
+      } else {
+        email = `${formValues.emailPrefix}${node.ip}${formValues.emailSuffix}`;
+      }
+      return {
+        key: String(idx),
+        email,
+        nodeAddr: node.ip,
+        nodePort: node.port,
+        nodeUser: node.user,
+        protocol: formValues.outboundProtocol,
+        traffic: trafficStr,
+        inboundLabel,
+      };
+    });
+  }, [generated, parsedNodes, selectedInbound, formValues]);
+
+  // ── 节点解析预览列 ──────────────────────────────────────────────
+  const nodeColumns: ColumnsType<NodeLine & { key: string }> = useMemo(() => [
+    { title: '#', key: 'idx', width: 50, render: (_v, _r, idx) => idx + 1 },
+    {
+      title: '备注',
+      dataIndex: 'remark',
+      key: 'remark',
+      width: 120,
+      ellipsis: true,
+      render: (v: string | undefined) => v || <Text type="secondary">—</Text>,
+    },
+    {
+      title: 'IP 地址',
+      dataIndex: 'ip',
+      key: 'ip',
+      width: 160,
+    },
+    {
+      title: '端口',
+      dataIndex: 'port',
+      key: 'port',
+      width: 80,
+    },
+    {
+      title: '用户名',
+      dataIndex: 'user',
+      key: 'user',
+      width: 130,
+      ellipsis: true,
+    },
+    {
+      title: '密码',
+      dataIndex: 'pass',
+      key: 'pass',
+      ellipsis: true,
+      render: (v: string) => (
+        <Text code style={{ fontSize: 12 }}>{v.length > 20 ? `${v.slice(0, 20)}…` : v}</Text>
+      ),
+    },
+  ], []);
+
+  // ── 渲染 ─────────────────────────────────────────────────────────
   return (
     <ConfigProvider theme={antdThemeConfig}>
       {messageContextHolder}
@@ -358,7 +569,7 @@ export default function ClientGeneratorPage() {
                 ⚡ 客户端 + 路由规则 一键生成器
               </Title>
 
-              {/* 配置面板 */}
+              {/* ── 配置面板 ──────────────────────────────────────── */}
               <Card
                 type="inner"
                 title="生成配置"
@@ -393,18 +604,23 @@ export default function ClientGeneratorPage() {
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={12} md={6}>
-                    <Form.Item label="目标入站 ID" style={{ marginBottom: 0 }}>
-                      <InputNumber
+                    <Form.Item label="目标入站" style={{ marginBottom: 0 }}>
+                      <Select
                         style={{ width: '100%' }}
-                        min={1}
-                        defaultValue={DEFAULT_VALUES.inboundId}
-                        onChange={(v) => setFormValues((prev) => ({ ...prev, inboundId: v || 1 }))}
+                        loading={inboundsLoading}
+                        placeholder="请选择入站"
+                        value={formValues.inboundId || undefined}
+                        onChange={(v) => setFormValues((prev) => ({ ...prev, inboundId: v }))}
+                        options={inbounds.map((ib) => ({
+                          value: ib.id,
+                          label: formatInboundLabel(ib),
+                        }))}
                       />
                     </Form.Item>
                   </Col>
                 </Row>
                 <Row gutter={[16, 12]} style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--color-border, #d9d9d9)' }}>
-                  <Col xs={24} sm={8}>
+                  <Col xs={24} sm={6}>
                     <Form.Item label="命名规则" style={{ marginBottom: 0 }}>
                       <select
                         style={{ width: '100%', height: 32, border: '1px solid #d9d9d9', borderRadius: 6, padding: '0 8px' }}
@@ -420,9 +636,22 @@ export default function ClientGeneratorPage() {
                       </select>
                     </Form.Item>
                   </Col>
+                  <Col xs={24} sm={6}>
+                    <Form.Item label="出站协议" style={{ marginBottom: 0 }}>
+                      <Select
+                        style={{ width: '100%' }}
+                        defaultValue={DEFAULT_VALUES.outboundProtocol}
+                        onChange={(v) => setFormValues((prev) => ({ ...prev, outboundProtocol: v }))}
+                        options={[
+                          { value: 'socks', label: 'SOCKS5' },
+                          { value: 'http', label: 'HTTP' },
+                        ]}
+                      />
+                    </Form.Item>
+                  </Col>
                   {namingMode === 'seq' && (
                     <>
-                      <Col xs={24} sm={8}>
+                      <Col xs={24} sm={6}>
                         <Form.Item label="起始数字" style={{ marginBottom: 0 }}>
                           <InputNumber
                             style={{ width: '100%' }}
@@ -432,7 +661,7 @@ export default function ClientGeneratorPage() {
                           />
                         </Form.Item>
                       </Col>
-                      <Col xs={24} sm={8}>
+                      <Col xs={24} sm={6}>
                         <Form.Item label="补零位数" style={{ marginBottom: 0 }}>
                           <InputNumber
                             style={{ width: '100%' }}
@@ -448,7 +677,7 @@ export default function ClientGeneratorPage() {
                 </Row>
               </Card>
 
-              {/* 节点输入 */}
+              {/* ── 节点输入 ──────────────────────────────────────── */}
               <Card
                 type="inner"
                 title="📥 上游 SK5 节点列表"
@@ -457,15 +686,29 @@ export default function ClientGeneratorPage() {
                 style={{ marginBottom: 16 }}
               >
                 <TextArea
-                  rows={6}
+                  rows={5}
                   placeholder={'香港节点:198.65.65.250:7176:user:pass\n日本节点:198.65.122.168:6808:user:pass\n198.65.123.45:7176:user2:pass2'}
-                  onChange={(e) => setFormValues((prev) => ({ ...prev, nodeInput: e.target.value }))}
+                  onChange={(e) => onNodeInputChange(e.target.value)}
                 />
+                {parsedNodes.length > 0 && (
+                  <div style={{ marginTop: 12 }}>
+                    <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
+                      已解析 <Tag color="processing">{parsedNodes.length}</Tag> 个节点：
+                    </Text>
+                    <Table<NodeLine & { key: string }>
+                      dataSource={parsedNodes.map((n, i) => ({ ...n, key: String(i), remark: n.remark || n.customPrefix }))}
+                      columns={nodeColumns}
+                      size="small"
+                      pagination={false}
+                      bordered
+                    />
+                  </div>
+                )}
               </Card>
 
-              {/* 操作按钮 */}
+              {/* ── 操作按钮 ──────────────────────────────────────── */}
               <Row gutter={16} style={{ marginBottom: 16 }}>
-                <Col xs={24} sm={generated ? 8 : 24}>
+                <Col xs={24} sm={generated ? 8 : 12}>
                   <Button
                     type="primary"
                     size="large"
@@ -507,7 +750,7 @@ export default function ClientGeneratorPage() {
                 )}
               </Row>
 
-              {/* 部署结果 */}
+              {/* ── 部署结果 ──────────────────────────────────────── */}
               {deployResult && (
                 <Card
                   size="small"
@@ -529,12 +772,29 @@ export default function ClientGeneratorPage() {
                 </Card>
               )}
 
-              {/* 生成结果 */}
+              {/* ── 生成结果 ──────────────────────────────────────── */}
               {generated && (
                 <>
-                  <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 16 }}>
+                  <Text type="secondary" style={{ display: 'block', textAlign: 'center', marginBottom: 12 }}>
                     已生成 <Tag color="processing">{count}</Tag> 个客户端配置
                   </Text>
+
+                  {/* 表格预览 */}
+                  <Card
+                    size="small"
+                    title={<Space><EyeOutlined /> 生成预览</Space>}
+                    style={{ marginBottom: 16 }}
+                  >
+                    <Table<PreviewRow>
+                      dataSource={previewData}
+                      columns={previewColumns}
+                      size="small"
+                      pagination={false}
+                      bordered
+                    />
+                  </Card>
+
+                  {/* 原始 JSON */}
                   <Row gutter={[16, 16]}>
                     <Col xs={24} lg={8}>
                       <Card
@@ -546,7 +806,7 @@ export default function ClientGeneratorPage() {
                           </Button>
                         }
                       >
-                        <TextArea rows={15} value={clientsJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                        <TextArea rows={12} value={clientsJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
                       </Card>
                     </Col>
                     <Col xs={24} lg={8}>
@@ -559,7 +819,7 @@ export default function ClientGeneratorPage() {
                           </Button>
                         }
                       >
-                        <TextArea rows={15} value={outboundsJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                        <TextArea rows={12} value={outboundsJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
                       </Card>
                     </Col>
                     <Col xs={24} lg={8}>
@@ -572,7 +832,7 @@ export default function ClientGeneratorPage() {
                           </Button>
                         }
                       >
-                        <TextArea rows={15} value={routingJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
+                        <TextArea rows={12} value={routingJson} readOnly style={{ fontFamily: 'monospace', fontSize: 12 }} />
                       </Card>
                     </Col>
                   </Row>
