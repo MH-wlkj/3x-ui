@@ -1786,6 +1786,8 @@
         "modeRealDelay": "Real delay",
         "testModeTooltip": "TCP: fast dial-only probe. HTTP: full request through xray. Real delay: total time including connection setup.",
         "testAll": "Test all",
+        "bulkDeleteTitle": "Delete {count} outbounds?",
+        "bulkDeleteContent": "This will remove the selected outbounds and their associated routing rules. This cannot be undone.",
         "httpStatus": "HTTP status",
         "breakdownConnect": "Proxy connect",
         "breakdownTls": "TLS via outbound",

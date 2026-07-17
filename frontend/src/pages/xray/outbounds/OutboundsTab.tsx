@@ -229,6 +229,30 @@ export default function OutboundsTab({
       onOk: () => mutate((tt) => applyOutboundDeletion(tt, idx)),
     });
   }
+  function confirmBulkDelete() {
+    const count = selectedRowKeys.length;
+    if (count === 0) return;
+    const indices = selectedRowKeys.map((k) => rows.findIndex((r) => r.key === k)).filter((i) => i >= 0);
+    modal.confirm({
+      title: t('pages.xray.outbound.bulkDeleteTitle', { count }),
+      content: t('pages.xray.outbound.bulkDeleteContent'),
+      okText: t('delete'),
+      okType: 'danger',
+      cancelText: t('cancel'),
+      onOk: () => {
+        mutate((tt) => {
+          if (!tt.outbounds) return;
+          // Delete from highest index first to preserve order
+          const sorted = [...indices].sort((a, b) => b - a);
+          for (const idx of sorted) {
+            applyOutboundDeletion(tt, idx);
+          }
+        });
+        setSelectedRowKeys([]);
+      },
+    });
+  }
+
   function setFirst(idx: number) {
     mutate((tt) => {
       if (!tt.outbounds) return;
@@ -250,6 +274,7 @@ export default function OutboundsTab({
     });
   }
 
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [importOpen, setImportOpen] = useState(false);
   const [exportOpen, setExportOpen] = useState(false);
   const [exportContent, setExportContent] = useState('');
@@ -462,6 +487,20 @@ export default function OutboundsTab({
       {modalContextHolder}
       {messageContextHolder}
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
+        {selectedRowKeys.length > 0 && (
+          <Row style={{ marginBottom: 8 }}>
+            <Col span={24}>
+              <Space size="small">
+                <Tag color="blue" closable onClose={() => setSelectedRowKeys([])} style={{ padding: '4px 8px', fontSize: 13 }}>
+                  {t('pages.clients.selectedCount', { count: selectedRowKeys.length })}
+                </Tag>
+                <Button danger icon={<DeleteOutlined />} onClick={confirmBulkDelete}>
+                  {t('delete')}
+                </Button>
+              </Space>
+            </Col>
+          </Row>
+        )}
         <Row gutter={[12, 12]} align="middle" justify="space-between">
           <Col xs={24} sm={12}>
             <Space size="small" wrap>
@@ -529,6 +568,10 @@ export default function OutboundsTab({
             columns={columns}
             dataSource={rows}
             rowKey={(r) => r.key}
+            rowSelection={{
+              selectedRowKeys,
+              onChange: (keys) => setSelectedRowKeys(keys),
+            }}
             pagination={false}
             size="small"
             locale={{
