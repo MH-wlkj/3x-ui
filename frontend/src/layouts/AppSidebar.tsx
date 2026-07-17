@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { ComponentType } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Drawer, Layout, Menu } from 'antd';
+import { Drawer, Layout, Menu, Tooltip } from 'antd';
 import type { MenuProps } from 'antd';
 import {
   ApiOutlined,
@@ -39,7 +39,7 @@ import { useAllSettings } from '@/api/queries/useAllSettings';
 import './AppSidebar.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'isSidebarCollapsed';
-const REPO_URL = 'https://t.me/xingjieIP';
+const REPO_URL = 'https://t.me/mhwl111';
 const LOGOUT_KEY = '__logout__';
 
 type IconName = 'dashboard' | 'inbound' | 'team' | 'groups' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'apidocs' | 'outbound' | 'routing' | 'generator';
@@ -72,17 +72,18 @@ function VersionBadge({ version, collapsed }: { version: string; collapsed?: boo
   if (!version) return null;
   const label = formatPanelVersion(version);
   return (
-    <a
-      href={REPO_URL}
-      target="_blank"
-      rel="noopener noreferrer"
-      className={`sider-version${collapsed ? ' is-collapsed' : ''}`}
-      aria-label={`Telegram ${label}`}
-      title={label}
-    >
-      <SendOutlined />
-      {!collapsed && <span className="sider-version-text">{label}</span>}
-    </a>
+    <Tooltip title="Telegram 群组" placement="right">
+      <a
+        href={REPO_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={`sider-version${collapsed ? ' is-collapsed' : ''}`}
+        aria-label="Telegram"
+        title={label}
+      >
+        <SendOutlined style={{ fontSize: 18 }} />
+      </a>
+    </Tooltip>
   );
 }
 
