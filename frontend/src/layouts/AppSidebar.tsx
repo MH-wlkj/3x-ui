@@ -13,7 +13,6 @@ import {
   DashboardOutlined,
   DatabaseOutlined,
   ExportOutlined,
-  GithubOutlined,
   GlobalOutlined,
   ImportOutlined,
   LogoutOutlined,
@@ -23,6 +22,7 @@ import {
   MoonFilled,
   MoonOutlined,
   SafetyOutlined,
+  SendOutlined,
   SettingOutlined,
   SunOutlined,
   SwapOutlined,
@@ -39,7 +39,7 @@ import { useAllSettings } from '@/api/queries/useAllSettings';
 import './AppSidebar.css';
 
 const SIDEBAR_COLLAPSED_KEY = 'isSidebarCollapsed';
-const REPO_URL = 'https://github.com/MHSanaei/3x-ui';
+const REPO_URL = 'https://t.me/xingjieIP';
 const LOGOUT_KEY = '__logout__';
 
 type IconName = 'dashboard' | 'inbound' | 'team' | 'groups' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'apidocs' | 'outbound' | 'routing' | 'generator';
@@ -77,10 +77,10 @@ function VersionBadge({ version, collapsed }: { version: string; collapsed?: boo
       target="_blank"
       rel="noopener noreferrer"
       className={`sider-version${collapsed ? ' is-collapsed' : ''}`}
-      aria-label={`GitHub ${label}`}
+      aria-label={`Telegram ${label}`}
       title={label}
     >
-      <GithubOutlined />
+      <SendOutlined />
       {!collapsed && <span className="sider-version-text">{label}</span>}
     </a>
   );
