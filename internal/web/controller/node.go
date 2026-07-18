@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"slices"
@@ -86,7 +87,14 @@ func (a *NodeController) getNodeXraySetting(c *gin.Context) {
 		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
 		return
 	}
-	jsonObj(c, settings, nil)
+	// settings is a JSON string from the sub-node's /panel/api/xray/ response obj.
+	// Forward the parsed object so the frontend sees the same shape as the local API.
+	var obj any
+	if err := json.Unmarshal([]byte(settings), &obj); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	jsonObj(c, obj, nil)
 }
 
 func (a *NodeController) updateNodeXraySetting(c *gin.Context) {
