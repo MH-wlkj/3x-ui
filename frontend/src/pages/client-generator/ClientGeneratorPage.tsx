@@ -345,16 +345,32 @@ export default function ClientGeneratorPage() {
           { silent: true },
         );
         if (!configMsg?.success || !configMsg.obj) {
-          messageApi.warning('⚠️ 客户端已创建，但无法获取 Xray 配置（请手动添加出站和路由）');
+          messageApi.warning('⚠️ 客户端已创建，但无法获取 Xray 配置');
           setSubmitting(false);
           return;
         }
 
-        const parsedObj = configMsg.obj as Record<string, unknown>;
+        // obj might be a parsed object or a JSON string depending on API path
+        let parsedObj: Record<string, unknown>;
+        if (typeof configMsg.obj === 'string') {
+          try { parsedObj = JSON.parse(configMsg.obj); } catch { parsedObj = {}; }
+        } else {
+          parsedObj = configMsg.obj as Record<string, unknown>;
+        }
+
+        // xraySetting may be a nested object or a raw JSON string
         let xrayCfg = parsedObj;
-        // If the response has xraySetting as a separate field, extract it
-        if (parsedObj.xraySetting && typeof parsedObj.xraySetting === 'object') {
-          xrayCfg = parsedObj.xraySetting as Record<string, unknown>;
+        const rawXray = parsedObj.xraySetting;
+        if (typeof rawXray === 'string') {
+          try { xrayCfg = JSON.parse(rawXray); } catch { /* keep parsedObj */ }
+        } else if (rawXray && typeof rawXray === 'object') {
+          xrayCfg = rawXray as Record<string, unknown>;
+        }
+
+        if (typeof xrayCfg !== 'object' || xrayCfg === null) {
+          messageApi.warning('⚠️ 客户端已创建，但 Xray 配置格式异常');
+          setSubmitting(false);
+          return;
         }
 
         const outboundList = (Array.isArray(xrayCfg.outbounds) ? [...xrayCfg.outbounds] : []) as Record<string, unknown>[];
