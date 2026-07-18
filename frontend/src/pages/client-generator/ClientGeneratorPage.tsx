@@ -357,35 +357,39 @@ export default function ClientGeneratorPage() {
         const configMsg = await HttpUtil.post(getConfigUrl, undefined, { silent: true });
         if (configMsg?.success && configMsg.obj) {
           const parsedObj = configMsg.obj as Record<string, unknown>;
-          const settings = parsedObj.xraySetting as {
-            outbounds?: unknown[];
-            routing?: { rules?: unknown[] };
-          } | undefined;
+          // xraySetting might be a raw JSON string or an already-parsed object
+          let xrayConfig: Record<string, unknown> | undefined;
+          const raw = parsedObj.xraySetting;
+          if (typeof raw === 'string') {
+            try { xrayConfig = JSON.parse(raw); } catch { xrayConfig = undefined; }
+          } else if (raw && typeof raw === 'object') {
+            xrayConfig = raw as Record<string, unknown>;
+          }
 
-          if (!settings) {
+          if (!xrayConfig) {
             messageApi.warning('⚠️ 无法读取 Xray 配置');
           } else {
+            const outboundList = (Array.isArray(xrayConfig.outbounds) ? xrayConfig.outbounds : []) as { tag?: string }[];
+            const routingSection = xrayConfig.routing as Record<string, unknown> | undefined;
+            const routingRules = (routingSection?.rules ?? []) as { outboundTag?: string | string[] }[];
+
             // Collect existing outbound tags from the real config
-            const existingTags = new Set(
-              ((settings.outbounds ?? []) as { tag?: string }[]).map((o) => o.tag),
-            );
+            const existingTags = new Set(outboundList.map((o) => o.tag));
 
             // Append new outbounds (skip duplicates by tag)
             const addedOutbounds: unknown[] = [];
             for (const ob of outbounds) {
               const tag = (ob as { tag?: string }).tag;
               if (tag && !existingTags.has(tag)) {
-                if (!settings.outbounds) settings.outbounds = [];
-                settings.outbounds.push(ob);
+                outboundList.push(ob);
+                xrayConfig.outbounds = outboundList;
                 addedOutbounds.push(ob);
               }
             }
 
             // Collect existing routing rule tags for dedup
-            if (!settings.routing) settings.routing = {};
-            if (!settings.routing.rules) settings.routing.rules = [];
             const existingRuleTags = new Set(
-              (settings.routing.rules as { outboundTag?: string | string[] }[]).map((r) => {
+              routingRules.map((r) => {
                 return Array.isArray(r.outboundTag) ? r.outboundTag[0] : r.outboundTag;
               }),
             );
@@ -397,16 +401,21 @@ export default function ClientGeneratorPage() {
                 const rt = rule as { outboundTag?: string | string[] };
                 const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
                 if (tag && !existingRuleTags.has(tag)) {
-                  settings.routing.rules.push(rule);
-                  existingRuleTags.add(tag);
+                  routingRules.push(rule);
                   addedRouting++;
                 }
+              }
+              // Write back updated rules
+              if (!routingSection) {
+                xrayConfig.routing = { rules: routingRules as never[] };
+              } else {
+                routingSection.rules = routingRules as never[];
               }
             }
 
             // Save updated config
             const saveMsg = await HttpUtil.post(updateConfigUrl, {
-              xraySetting: JSON.stringify(settings, null, 2),
+              xraySetting: JSON.stringify(xrayConfig, null, 2),
               outboundTestUrl: (parsedObj.outboundTestUrl as string) || 'https://www.google.com/generate_204',
             });
             if (saveMsg?.success) {
