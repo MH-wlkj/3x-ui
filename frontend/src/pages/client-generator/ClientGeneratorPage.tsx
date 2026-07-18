@@ -204,6 +204,12 @@ export default function ClientGeneratorPage() {
     [inbounds, formValues.inboundId],
   );
 
+  // Determine if the selected inbound belongs to a sub-node
+  const selectedNodeId = useMemo(
+    () => (selectedInbound as { nodeId?: number | null })?.nodeId ?? null,
+    [selectedInbound],
+  );
+
   // ── 输入节点时实时解析 ──────────────────────────────────────────
   const onNodeInputChange = useCallback((value: string) => {
     setFormValues((prev) => ({ ...prev, nodeInput: value }));
@@ -304,6 +310,15 @@ export default function ClientGeneratorPage() {
     if (!clientsJson) return;
     setSubmitting(true);
     setDeployResult(null);
+
+    // Build the Xray config API base path — use node proxy if target is a sub-node
+    const xrayBase = selectedNodeId
+      ? `/panel/api/node/${selectedNodeId}/xray`
+      : '/panel/api/xray';
+    const restartUrl = selectedNodeId
+      ? `/panel/api/node/${selectedNodeId}/xray`
+      : '/panel/api/server/restartXrayService';
+
     try {
       const payloads = JSON.parse(clientsJson) as ClientPayload[];
       const outbounds = (() => {
@@ -339,7 +354,7 @@ export default function ClientGeneratorPage() {
 
       // Step 2: Add outbounds and routing rules to Xray config
       if (outbounds.length > 0 || routing.length > 0) {
-        const configMsg = await HttpUtil.post('/panel/api/xray/', undefined, { silent: true });
+        const configMsg = await HttpUtil.post(`${xrayBase}/`, undefined, { silent: true });
         if (configMsg?.success && typeof configMsg.obj === 'string') {
           const parsed = JSON.parse(configMsg.obj);
           const settings = parsed.xraySetting as {
@@ -388,7 +403,7 @@ export default function ClientGeneratorPage() {
           }
 
           // Save updated config — send only the xraySetting part
-          const saveMsg = await HttpUtil.post('/panel/api/xray/update', {
+          const saveMsg = await HttpUtil.post(`${xrayBase}/update`, {
             xraySetting: JSON.stringify(settings, null, 2),
             outboundTestUrl: (parsed as { outboundTestUrl?: string }).outboundTestUrl || 'https://www.google.com/generate_204',
           });
@@ -405,7 +420,7 @@ export default function ClientGeneratorPage() {
 
       // Step 3: Restart Xray
       try {
-        await HttpUtil.post('/panel/api/server/restartXrayService');
+        await HttpUtil.post(`${restartUrl}`);
         messageApi.info('🔄 Xray 配置已重载');
       } catch {
         messageApi.warning('⚠️ 配置已保存，但 Xray 重载失败，请手动重启');
@@ -417,7 +432,7 @@ export default function ClientGeneratorPage() {
     } finally {
       setSubmitting(false);
     }
-  }, [clientsJson, outboundsJson, routingJson, messageApi]);
+  }, [clientsJson, outboundsJson, routingJson, selectedNodeId, messageApi]);
 
   const getDeployStatusIcon = () => {
     if (!deployResult) return null;

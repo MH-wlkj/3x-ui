@@ -591,6 +591,25 @@ func (r *Remote) RestartXray(ctx context.Context) error {
 	return err
 }
 
+// GetXraySetting fetches the node's full Xray config JSON string.
+func (r *Remote) GetXraySetting(ctx context.Context) (string, error) {
+	env, err := r.do(ctx, http.MethodPost, "panel/api/xray/", nil)
+	if err != nil {
+		return "", err
+	}
+	return string(env.Obj), nil
+}
+
+// UpdateXraySetting pushes a new Xray config JSON to the remote node.
+func (r *Remote) UpdateXraySetting(ctx context.Context, settings, outboundTestUrl string) error {
+	body := map[string]string{
+		"xraySetting":     settings,
+		"outboundTestUrl": outboundTestUrl,
+	}
+	_, err := r.do(ctx, http.MethodPost, "panel/api/xray/update", body)
+	return err
+}
+
 // UpdatePanel asks the node to run its own official self-updater (update.sh)
 // and restart onto the latest release. The node returns as soon as the job is
 // launched; the new version surfaces on the next heartbeat. When dev is true the

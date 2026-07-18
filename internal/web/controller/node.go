@@ -11,6 +11,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/database/model"
 	"github.com/mhsanaei/3x-ui/v3/internal/logger"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/middleware"
+	"github.com/mhsanaei/3x-ui/v3/internal/web/runtime"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
 
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,8 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.GET("/history/:id/:metric/:bucket", a.history)
 	g.POST("/mtls/ca", a.mtlsCa)
 	g.POST("/mtls/trustCA", a.setMtlsTrustCA)
+	g.POST("/:id/xray", a.getNodeXraySetting)
+	g.POST("/:id/xray/update", a.updateNodeXraySetting)
 }
 
 // mtlsCa returns this panel's node-auth CA certificate (public) to paste into a
@@ -62,6 +65,60 @@ func (a *NodeController) mtlsCa(c *gin.Context) {
 // setMtlsTrustCA stores the CA this panel trusts for incoming node-API client
 // certificates (this panel acting as a node). An empty value disables it.
 // Applied on the next panel restart.
+func (a *NodeController) getNodeXraySetting(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	node, err := a.nodeService.GetById(id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.obtain"), err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	remote := runtime.NewRemote(node, nil)
+	settings, err := remote.GetXraySetting(ctx)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.obtain"), err)
+		return
+	}
+	jsonObj(c, settings, nil)
+}
+
+func (a *NodeController) updateNodeXraySetting(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	node, err := a.nodeService.GetById(id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.obtain"), err)
+		return
+	}
+
+	var req struct {
+		XraySetting     string `json:"xraySetting"`
+		OutboundTestUrl string `json:"outboundTestUrl"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+
+	ctx := c.Request.Context()
+	remote := runtime.NewRemote(node, nil)
+	if err := remote.UpdateXraySetting(ctx, req.XraySetting, req.OutboundTestUrl); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.save"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.saved"), nil)
+}
+
 func (a *NodeController) setMtlsTrustCA(c *gin.Context) {
 	var req struct {
 		CaCert string `json:"caCert" form:"caCert"`
