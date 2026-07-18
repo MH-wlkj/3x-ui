@@ -72,6 +72,7 @@ interface InboundOption {
   tag?: string;
   protocol?: string;
   port?: number;
+  nodeId?: number | null;
 }
 
 interface PreviewRow {
@@ -316,7 +317,7 @@ export default function ClientGeneratorPage() {
       ? `/panel/api/node/${selectedNodeId}/xray`
       : '/panel/api/xray';
     const restartUrl = selectedNodeId
-      ? `/panel/api/node/${selectedNodeId}/xray`
+      ? `/panel/api/node/${selectedNodeId}/xray/restart`
       : '/panel/api/server/restartXrayService';
 
     try {

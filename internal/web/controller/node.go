@@ -48,6 +48,7 @@ func (a *NodeController) initRouter(g *gin.RouterGroup) {
 	g.POST("/mtls/trustCA", a.setMtlsTrustCA)
 	g.POST("/:id/xray", a.getNodeXraySetting)
 	g.POST("/:id/xray/update", a.updateNodeXraySetting)
+	g.POST("/:id/xray/restart", a.restartNodeXray)
 }
 
 // mtlsCa returns this panel's node-auth CA certificate (public) to paste into a
@@ -117,6 +118,26 @@ func (a *NodeController) updateNodeXraySetting(c *gin.Context) {
 		return
 	}
 	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.saved"), nil)
+}
+
+func (a *NodeController) restartNodeXray(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
+		return
+	}
+	node, err := a.nodeService.GetById(id)
+	if err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.nodes.toasts.obtain"), err)
+		return
+	}
+	ctx := c.Request.Context()
+	remote := runtime.NewRemote(node, nil)
+	if err := remote.RestartXray(ctx); err != nil {
+		jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.restartError"), err)
+		return
+	}
+	jsonMsg(c, I18nWeb(c, "pages.inbounds.toasts.restarted"), nil)
 }
 
 func (a *NodeController) setMtlsTrustCA(c *gin.Context) {
