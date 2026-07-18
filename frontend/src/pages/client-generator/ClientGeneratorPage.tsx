@@ -312,130 +312,107 @@ export default function ClientGeneratorPage() {
     setSubmitting(true);
     setDeployResult(null);
 
-    // Build the Xray config API paths — use node proxy if target is a sub-node
     const isNode = !!selectedNodeId;
     const nodePrefix = isNode ? `/panel/api/nodes/${selectedNodeId}/xray` : '';
-    const getConfigUrl = isNode ? `${nodePrefix}` : '/panel/api/xray/';
-    const updateConfigUrl = isNode ? `${nodePrefix}/update` : '/panel/api/xray/update';
-    const restartUrl = isNode ? `${nodePrefix}/restart` : '/panel/api/server/restartXrayService';
 
     try {
       const payloads = JSON.parse(clientsJson) as ClientPayload[];
-      const outbounds = (() => {
-        try { return JSON.parse(outboundsJson); } catch { return []; }
-      })();
-      const routing = (() => {
-        try { return JSON.parse(routingJson); } catch { return []; }
-      })();
+      const outbounds = (() => { try { return JSON.parse(outboundsJson); } catch { return []; } })();
+      const routing = (() => { try { return JSON.parse(routingJson); } catch { return []; } })();
 
-      if (outbounds.length === 0) {
-        messageApi.warning('⚠️ 出站规则为空，将只创建客户端');
+      if (outbounds.length === 0 && routing.length === 0) {
+        messageApi.warning('⚠️ 出站和路由规则为空，仅创建客户端');
       }
 
       // Step 1: Bulk create clients
       const msg = await HttpUtil.post('/panel/api/clients/bulkCreate', payloads, JSON_HEADERS);
-      const result = msg?.obj as { created?: number; skipped?: { email?: string; reason?: string }[] } | undefined;
-      const created = result?.created ?? 0;
-      const skipped = result?.skipped ?? [];
-
       if (!msg?.success) {
         setDeployResult({ success: false, msg: msg?.msg || '部署失败' });
         messageApi.error(`部署失败：${msg?.msg || '未知错误'}`);
         setSubmitting(false);
         return;
       }
-
-      setDeployResult({
-        success: true,
-        msg: `成功创建 ${created} 个客户端${skipped.length > 0 ? `，${skipped.length} 个跳过` : ''}`,
-        created,
-      });
+      const result = msg?.obj as { created?: number; skipped?: { email?: string; reason?: string }[] } | undefined;
+      const created = result?.created ?? 0;
+      setDeployResult({ success: true, msg: `创建 ${created} 个客户端`, created });
       messageApi.success(`✅ 已创建 ${created} 个客户端！`);
 
-      // Step 2: Add outbounds and routing rules to Xray config
+      // Step 2: Add outbounds and routing rules to Xray config if needed
       if (outbounds.length > 0 || routing.length > 0) {
-        const configMsg = await HttpUtil.post(getConfigUrl, undefined, { silent: true });
-        if (configMsg?.success && configMsg.obj) {
-          const parsedObj = configMsg.obj as Record<string, unknown>;
-          // xraySetting might be a raw JSON string or an already-parsed object
-          let xrayConfig: Record<string, unknown> | undefined;
-          const raw = parsedObj.xraySetting;
-          if (typeof raw === 'string') {
-            try { xrayConfig = JSON.parse(raw); } catch { xrayConfig = undefined; }
-          } else if (raw && typeof raw === 'object') {
-            xrayConfig = raw as Record<string, unknown>;
-          }
+        const configMsg = await HttpUtil.post(
+          isNode ? nodePrefix : '/panel/api/xray/',
+          undefined,
+          { silent: true },
+        );
+        if (!configMsg?.success || !configMsg.obj) {
+          messageApi.warning('⚠️ 客户端已创建，但无法获取 Xray 配置（请手动添加出站和路由）');
+          setSubmitting(false);
+          return;
+        }
 
-          if (!xrayConfig) {
-            messageApi.warning('⚠️ 无法读取 Xray 配置');
-          } else {
-            const outboundList = (Array.isArray(xrayConfig.outbounds) ? xrayConfig.outbounds : []) as { tag?: string }[];
-            const routingSection = xrayConfig.routing as Record<string, unknown> | undefined;
-            const routingRules = (routingSection?.rules ?? []) as { outboundTag?: string | string[] }[];
+        const parsedObj = configMsg.obj as Record<string, unknown>;
+        let xrayCfg = parsedObj;
+        // If the response has xraySetting as a separate field, extract it
+        if (parsedObj.xraySetting && typeof parsedObj.xraySetting === 'object') {
+          xrayCfg = parsedObj.xraySetting as Record<string, unknown>;
+        }
 
-            // Collect existing outbound tags from the real config
-            const existingTags = new Set(outboundList.map((o) => o.tag));
+        const outboundList = (Array.isArray(xrayCfg.outbounds) ? [...xrayCfg.outbounds] : []) as Record<string, unknown>[];
+        const routingObj = (xrayCfg.routing || {}) as Record<string, unknown>;
+        const routingRules = (Array.isArray(routingObj.rules) ? [...routingObj.rules] : []) as Record<string, unknown>[];
 
-            // Append new outbounds (skip duplicates by tag)
-            const addedOutbounds: unknown[] = [];
-            for (const ob of outbounds) {
-              const tag = (ob as { tag?: string }).tag;
-              if (tag && !existingTags.has(tag)) {
-                outboundList.push(ob);
-                xrayConfig.outbounds = outboundList;
-                addedOutbounds.push(ob);
-              }
-            }
-
-            // Collect existing routing rule tags for dedup
-            const existingRuleTags = new Set(
-              routingRules.map((r) => {
-                return Array.isArray(r.outboundTag) ? r.outboundTag[0] : r.outboundTag;
-              }),
-            );
-
-            // Append new routing rules (skip duplicates by outboundTag)
-            let addedRouting = 0;
-            if (routing.length > 0) {
-              for (const rule of routing) {
-                const rt = rule as { outboundTag?: string | string[] };
-                const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
-                if (tag && !existingRuleTags.has(tag)) {
-                  routingRules.push(rule);
-                  addedRouting++;
-                }
-              }
-              // Write back updated rules
-              if (!routingSection) {
-                xrayConfig.routing = { rules: routingRules as never[] };
-              } else {
-                routingSection.rules = routingRules as never[];
-              }
-            }
-
-            // Save updated config
-            const saveMsg = await HttpUtil.post(updateConfigUrl, {
-              xraySetting: JSON.stringify(xrayConfig, null, 2),
-              outboundTestUrl: (parsedObj.outboundTestUrl as string) || 'https://www.google.com/generate_204',
-            });
-            if (saveMsg?.success) {
-              const parts: string[] = [];
-              if (addedOutbounds.length) parts.push(`${addedOutbounds.length} 个出站`);
-              if (addedRouting) parts.push(`${addedRouting} 个路由`);
-              messageApi.success(`✅ 已添加 ${parts.join('、')} 规则`);
-            } else {
-              messageApi.warning('⚠️ 客户端已创建，但规则保存失败');
-            }
+        const existingTags = new Set(outboundList.map((o) => o.tag));
+        let addedOutbounds = 0;
+        for (const ob of outbounds) {
+          const tag = (ob as { tag?: string }).tag;
+          if (tag && !existingTags.has(tag)) {
+            outboundList.push(ob);
+            existingTags.add(tag);
+            addedOutbounds++;
           }
         }
-      }
 
-      // Step 3: Restart Xray
-      try {
-        await HttpUtil.post(`${restartUrl}`);
-        messageApi.info('🔄 Xray 配置已重载');
-      } catch {
-        messageApi.warning('⚠️ 配置已保存，但 Xray 重载失败，请手动重启');
+        const existingRuleTags = new Set(
+          routingRules.map((r) => {
+            const tag = r.outboundTag;
+            return Array.isArray(tag) ? tag[0] : tag;
+          }),
+        );
+        let addedRouting = 0;
+        for (const rule of routing) {
+          const rt = rule as { outboundTag?: string | string[] };
+          const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
+          if (tag && !existingRuleTags.has(tag)) {
+            routingRules.push(rule);
+            existingRuleTags.add(tag);
+            addedRouting++;
+          }
+        }
+
+        xrayCfg.outbounds = outboundList;
+        xrayCfg.routing = { ...routingObj, rules: routingRules };
+        const outboundTestUrl = (parsedObj.outboundTestUrl as string) || 'https://www.google.com/generate_204';
+
+        const saveMsg = await HttpUtil.post(
+          isNode ? `${nodePrefix}/update` : '/panel/api/xray/update',
+          { xraySetting: JSON.stringify(xrayCfg, null, 2), outboundTestUrl },
+        );
+        if (saveMsg?.success) {
+          const parts: string[] = [];
+          if (addedOutbounds) parts.push(`${addedOutbounds} 个出站`);
+          if (addedRouting) parts.push(`${addedRouting} 个路由`);
+          if (parts.length) messageApi.success(`✅ 已添加 ${parts.join('、')} 规则`);
+        } else {
+          messageApi.warning('⚠️ 客户端已创建，但规则保存失败');
+        }
+
+        // Step 3: Restart Xray
+        try {
+          await HttpUtil.post(isNode ? `${nodePrefix}/restart` : '/panel/api/server/restartXrayService');
+          messageApi.info('🔄 Xray 配置已重载');
+        } catch {
+          messageApi.warning('⚠️ 配置已保存，但 Xray 重载失败，请手动重启');
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : '未知错误';
@@ -541,47 +518,6 @@ export default function ClientGeneratorPage() {
       };
     });
   }, [generated, parsedNodes, selectedInbound, formValues]);
-
-  // ── 节点解析预览列 ──────────────────────────────────────────────
-  const nodeColumns: ColumnsType<NodeLine & { key: string }> = useMemo(() => [
-    { title: '#', key: 'idx', width: 50, render: (_v, _r, idx) => idx + 1 },
-    {
-      title: '备注',
-      dataIndex: 'remark',
-      key: 'remark',
-      width: 120,
-      ellipsis: true,
-      render: (v: string | undefined) => v || <Text type="secondary">—</Text>,
-    },
-    {
-      title: 'IP 地址',
-      dataIndex: 'ip',
-      key: 'ip',
-      width: 160,
-    },
-    {
-      title: '端口',
-      dataIndex: 'port',
-      key: 'port',
-      width: 80,
-    },
-    {
-      title: '用户名',
-      dataIndex: 'user',
-      key: 'user',
-      width: 130,
-      ellipsis: true,
-    },
-    {
-      title: '密码',
-      dataIndex: 'pass',
-      key: 'pass',
-      ellipsis: true,
-      render: (v: string) => (
-        <Text code style={{ fontSize: 12 }}>{v.length > 20 ? `${v.slice(0, 20)}…` : v}</Text>
-      ),
-    },
-  ], []);
 
   // ── 渲染 ─────────────────────────────────────────────────────────
   return (
@@ -717,20 +653,6 @@ export default function ClientGeneratorPage() {
                   placeholder={'香港节点:198.65.65.250:7176:user:pass\n日本节点:198.65.122.168:6808:user:pass\n198.65.123.45:7176:user2:pass2'}
                   onChange={(e) => onNodeInputChange(e.target.value)}
                 />
-                {parsedNodes.length > 0 && (
-                  <div style={{ marginTop: 12 }}>
-                    <Text type="secondary" style={{ display: 'block', marginBottom: 8 }}>
-                      已解析 <Tag color="processing">{parsedNodes.length}</Tag> 个节点：
-                    </Text>
-                    <Table<NodeLine & { key: string }>
-                      dataSource={parsedNodes.map((n, i) => ({ ...n, key: String(i), remark: n.remark || n.customPrefix }))}
-                      columns={nodeColumns}
-                      size="small"
-                      pagination={false}
-                      bordered
-                    />
-                  </div>
-                )}
               </Card>
 
               {/* ── 操作按钮 ──────────────────────────────────────── */}
