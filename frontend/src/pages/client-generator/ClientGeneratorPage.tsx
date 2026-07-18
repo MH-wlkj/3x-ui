@@ -314,7 +314,7 @@ export default function ClientGeneratorPage() {
 
     // Build the Xray config API paths — use node proxy if target is a sub-node
     const isNode = !!selectedNodeId;
-    const nodePrefix = isNode ? `/panel/api/node/${selectedNodeId}/xray` : '';
+    const nodePrefix = isNode ? `/panel/api/nodes/${selectedNodeId}/xray` : '';
     const getConfigUrl = isNode ? `${nodePrefix}` : '/panel/api/xray/';
     const updateConfigUrl = isNode ? `${nodePrefix}/update` : '/panel/api/xray/update';
     const restartUrl = isNode ? `${nodePrefix}/restart` : '/panel/api/server/restartXrayService';
