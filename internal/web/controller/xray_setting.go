@@ -131,11 +131,21 @@ func (a *XraySettingController) getXraySetting(c *gin.Context) {
 // outbounds or routing rules changed, with a process restart otherwise.
 func (a *XraySettingController) updateSetting(c *gin.Context) {
 	xraySetting := c.PostForm("xraySetting")
+	outboundTestUrl := c.PostForm("outboundTestUrl")
+	if xraySetting == "" {
+		var body struct {
+			XraySetting     string `json:"xraySetting"`
+			OutboundTestUrl string `json:"outboundTestUrl"`
+		}
+		if err := c.ShouldBindJSON(&body); err == nil && body.XraySetting != "" {
+			xraySetting = body.XraySetting
+			outboundTestUrl = body.OutboundTestUrl
+		}
+	}
 	if err := a.XraySettingService.SaveXraySetting(xraySetting); err != nil {
 		jsonMsg(c, I18nWeb(c, "pages.settings.toasts.modifySettings"), err)
 		return
 	}
-	outboundTestUrl := c.PostForm("outboundTestUrl")
 	if outboundTestUrl == "" {
 		outboundTestUrl = "https://www.google.com/generate_204"
 	}

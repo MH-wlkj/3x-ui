@@ -601,11 +601,10 @@ func (r *Remote) GetXraySetting(ctx context.Context) (string, error) {
 }
 
 // UpdateXraySetting pushes a new Xray config JSON to the remote node.
-// The target endpoint expects form-encoded data, not JSON.
 func (r *Remote) UpdateXraySetting(ctx context.Context, settings, outboundTestUrl string) error {
-	body := url.Values{
-		"xraySetting":     {settings},
-		"outboundTestUrl": {outboundTestUrl},
+	body := map[string]string{
+		"xraySetting":     settings,
+		"outboundTestUrl": outboundTestUrl,
 	}
 	_, err := r.do(ctx, http.MethodPost, "panel/api/xray/update", body)
 	return err
