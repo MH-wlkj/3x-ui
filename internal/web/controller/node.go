@@ -111,10 +111,10 @@ func (a *NodeController) updateNodeXraySetting(c *gin.Context) {
 	}
 
 	var req struct {
-		XraySetting     string `json:"xraySetting"`
-		OutboundTestUrl string `json:"outboundTestUrl"`
+		XraySetting     string `json:"xraySetting" form:"xraySetting"`
+		OutboundTestUrl string `json:"outboundTestUrl" form:"outboundTestUrl"`
 	}
-	if err := c.ShouldBindJSON(&req); err != nil {
+	if err := c.ShouldBind(&req); err != nil {
 		jsonMsg(c, I18nWeb(c, "somethingWentWrong"), err)
 		return
 	}
