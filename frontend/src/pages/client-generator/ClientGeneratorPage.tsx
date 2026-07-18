@@ -355,65 +355,68 @@ export default function ClientGeneratorPage() {
       // Step 2: Add outbounds and routing rules to Xray config
       if (outbounds.length > 0 || routing.length > 0) {
         const configMsg = await HttpUtil.post(getConfigUrl, undefined, { silent: true });
-        if (configMsg?.success && typeof configMsg.obj === 'string') {
-          const parsed = JSON.parse(configMsg.obj);
-          const settings = parsed.xraySetting as {
+        if (configMsg?.success && configMsg.obj) {
+          const parsedObj = configMsg.obj as Record<string, unknown>;
+          const settings = parsedObj.xraySetting as {
             outbounds?: unknown[];
             routing?: { rules?: unknown[] };
-          };
+          } | undefined;
 
-          // Collect existing outbound tags from the real config
-          const existingTags = new Set(
-            (settings.outbounds ?? []).map((o: unknown) => (o as { tag?: string }).tag),
-          );
+          if (!settings) {
+            messageApi.warning('⚠️ 无法读取 Xray 配置');
+          } else {
+            // Collect existing outbound tags from the real config
+            const existingTags = new Set(
+              ((settings.outbounds ?? []) as { tag?: string }[]).map((o) => o.tag),
+            );
 
-          // Append new outbounds (skip duplicates by tag)
-          const addedOutbounds: unknown[] = [];
-          for (const ob of outbounds) {
-            const tag = (ob as { tag?: string }).tag;
-            if (tag && !existingTags.has(tag)) {
-              settings.outbounds ??= [];
-              settings.outbounds.push(ob);
-              addedOutbounds.push(ob);
-            }
-          }
-
-          // Collect existing routing rule tags for dedup
-          settings.routing ??= {};
-          settings.routing.rules ??= [];
-          const existingRuleTags = new Set(
-            (settings.routing.rules ?? []).map((r: unknown) => {
-              const rt = r as { outboundTag?: string | string[] };
-              return Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
-            }),
-          );
-
-          // Append new routing rules (skip duplicates by outboundTag)
-          let addedRouting = 0;
-          if (routing.length > 0) {
-            for (const rule of routing) {
-              const rt = rule as { outboundTag?: string | string[] };
-              const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
-              if (tag && !existingRuleTags.has(tag)) {
-                settings.routing.rules.push(rule);
-                existingRuleTags.add(tag);
-                addedRouting++;
+            // Append new outbounds (skip duplicates by tag)
+            const addedOutbounds: unknown[] = [];
+            for (const ob of outbounds) {
+              const tag = (ob as { tag?: string }).tag;
+              if (tag && !existingTags.has(tag)) {
+                if (!settings.outbounds) settings.outbounds = [];
+                settings.outbounds.push(ob);
+                addedOutbounds.push(ob);
               }
             }
-          }
 
-          // Save updated config — send only the xraySetting part
-          const saveMsg = await HttpUtil.post(updateConfigUrl, {
-            xraySetting: JSON.stringify(settings, null, 2),
-            outboundTestUrl: (parsed as { outboundTestUrl?: string }).outboundTestUrl || 'https://www.google.com/generate_204',
-          });
-          if (saveMsg?.success) {
-            const parts: string[] = [];
-            if (addedOutbounds.length) parts.push(`${addedOutbounds.length} 个出站`);
-            if (addedRouting) parts.push(`${addedRouting} 个路由`);
-            messageApi.success(`✅ 已添加 ${parts.join('、')} 规则`);
-          } else {
-            messageApi.warning('⚠️ 客户端已创建，但规则保存失败');
+            // Collect existing routing rule tags for dedup
+            if (!settings.routing) settings.routing = {};
+            if (!settings.routing.rules) settings.routing.rules = [];
+            const existingRuleTags = new Set(
+              (settings.routing.rules as { outboundTag?: string | string[] }[]).map((r) => {
+                return Array.isArray(r.outboundTag) ? r.outboundTag[0] : r.outboundTag;
+              }),
+            );
+
+            // Append new routing rules (skip duplicates by outboundTag)
+            let addedRouting = 0;
+            if (routing.length > 0) {
+              for (const rule of routing) {
+                const rt = rule as { outboundTag?: string | string[] };
+                const tag = Array.isArray(rt.outboundTag) ? rt.outboundTag[0] : rt.outboundTag;
+                if (tag && !existingRuleTags.has(tag)) {
+                  settings.routing.rules.push(rule);
+                  existingRuleTags.add(tag);
+                  addedRouting++;
+                }
+              }
+            }
+
+            // Save updated config
+            const saveMsg = await HttpUtil.post(updateConfigUrl, {
+              xraySetting: JSON.stringify(settings, null, 2),
+              outboundTestUrl: (parsedObj.outboundTestUrl as string) || 'https://www.google.com/generate_204',
+            });
+            if (saveMsg?.success) {
+              const parts: string[] = [];
+              if (addedOutbounds.length) parts.push(`${addedOutbounds.length} 个出站`);
+              if (addedRouting) parts.push(`${addedRouting} 个路由`);
+              messageApi.success(`✅ 已添加 ${parts.join('、')} 规则`);
+            } else {
+              messageApi.warning('⚠️ 客户端已创建，但规则保存失败');
+            }
           }
         }
       }
