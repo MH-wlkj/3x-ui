@@ -312,13 +312,12 @@ export default function ClientGeneratorPage() {
     setSubmitting(true);
     setDeployResult(null);
 
-    // Build the Xray config API base path — use node proxy if target is a sub-node
-    const xrayBase = selectedNodeId
-      ? `/panel/api/node/${selectedNodeId}/xray`
-      : '/panel/api/xray';
-    const restartUrl = selectedNodeId
-      ? `/panel/api/node/${selectedNodeId}/xray/restart`
-      : '/panel/api/server/restartXrayService';
+    // Build the Xray config API paths — use node proxy if target is a sub-node
+    const isNode = !!selectedNodeId;
+    const nodePrefix = isNode ? `/panel/api/node/${selectedNodeId}/xray` : '';
+    const getConfigUrl = isNode ? `${nodePrefix}` : '/panel/api/xray/';
+    const updateConfigUrl = isNode ? `${nodePrefix}/update` : '/panel/api/xray/update';
+    const restartUrl = isNode ? `${nodePrefix}/restart` : '/panel/api/server/restartXrayService';
 
     try {
       const payloads = JSON.parse(clientsJson) as ClientPayload[];
@@ -355,7 +354,7 @@ export default function ClientGeneratorPage() {
 
       // Step 2: Add outbounds and routing rules to Xray config
       if (outbounds.length > 0 || routing.length > 0) {
-        const configMsg = await HttpUtil.post(`${xrayBase}/`, undefined, { silent: true });
+        const configMsg = await HttpUtil.post(getConfigUrl, undefined, { silent: true });
         if (configMsg?.success && typeof configMsg.obj === 'string') {
           const parsed = JSON.parse(configMsg.obj);
           const settings = parsed.xraySetting as {
@@ -404,7 +403,7 @@ export default function ClientGeneratorPage() {
           }
 
           // Save updated config — send only the xraySetting part
-          const saveMsg = await HttpUtil.post(`${xrayBase}/update`, {
+          const saveMsg = await HttpUtil.post(updateConfigUrl, {
             xraySetting: JSON.stringify(settings, null, 2),
             outboundTestUrl: (parsed as { outboundTestUrl?: string }).outboundTestUrl || 'https://www.google.com/generate_204',
           });
