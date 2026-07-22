@@ -13,6 +13,7 @@ import {
   Row,
   Select,
   Space,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -62,6 +63,7 @@ interface ClientPayload {
     enable: boolean;
     tgId: number;
     subId: string;
+    flow?: string;
   };
   inboundIds: number[];
 }
@@ -96,6 +98,7 @@ interface GeneratorFormValues {
   startNum: number;
   padLength: number;
   outboundProtocol: 'socks' | 'http';
+  enableVision: boolean;
 }
 
 const DEFAULT_VALUES: GeneratorFormValues = {
@@ -108,6 +111,7 @@ const DEFAULT_VALUES: GeneratorFormValues = {
   startNum: 1,
   padLength: 2,
   outboundProtocol: 'socks',
+  enableVision: true,
 };
 
 function parseNodes(text: string): NodeLine[] {
@@ -250,6 +254,9 @@ export default function ClientGeneratorPage() {
         emailName = `${formValues.emailPrefix}${node.ip}${formValues.emailSuffix}`;
       }
 
+      // Auto-enable XTLS Vision flow for VLESS inbounds
+      const shouldSetFlow = formValues.enableVision && selectedInbound?.protocol === 'vless';
+
       clients.push({
         client: {
           id: RandomUtil.randomUUID(),
@@ -263,6 +270,7 @@ export default function ClientGeneratorPage() {
           enable: true,
           tgId: 0,
           subId: RandomUtil.randomLowerAndNum(16),
+          ...(shouldSetFlow ? { flow: 'xtls-rprx-vision' } : {}),
         },
         inboundIds: [formValues.inboundId],
       });
@@ -626,6 +634,20 @@ export default function ClientGeneratorPage() {
                           { value: 'http', label: 'HTTP' },
                         ]}
                       />
+                    </Form.Item>
+                  </Col>
+                  <Col xs={24} sm={6}>
+                    <Form.Item label="XTLS Vision Flow" style={{ marginBottom: 0 }}>
+                      <Space>
+                        <Switch
+                          checked={formValues.enableVision}
+                          onChange={(v) => setFormValues((prev) => ({ ...prev, enableVision: v }))}
+                        />
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {formValues.enableVision ? '已开启' : '已关闭'}
+                          {selectedInbound?.protocol === 'vless' ? '' : ' (仅 VLESS 生效)'}
+                        </Text>
+                      </Space>
                     </Form.Item>
                   </Col>
                   {namingMode === 'seq' && (
