@@ -5,6 +5,7 @@ import { CopyOutlined, DownloadOutlined, PictureOutlined } from '@ant-design/ico
 
 import { ClipboardManager, FileManager } from '@/utils';
 import { activateOnKey } from '@/utils/a11y';
+import { qrPngBlob } from '@/lib/qr/png';
 import './QrPanel.css';
 
 interface QrPanelProps {
@@ -13,34 +14,6 @@ interface QrPanelProps {
   downloadName?: string;
   size?: number;
   showQr?: boolean;
-}
-
-async function svgToPngBlob(svgEl: SVGSVGElement | null, size: number): Promise<Blob | null> {
-  if (!svgEl) return null;
-  const svgData = new XMLSerializer().serializeToString(svgEl);
-  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
-  return new Promise<Blob | null>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        resolve(null);
-        return;
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      ctx.drawImage(img, 0, 0, size, size);
-      URL.revokeObjectURL(url);
-      canvas.toBlob((blob) => resolve(blob), 'image/png');
-    };
-    img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
-    img.src = url;
-  });
 }
 
 function downloadImageBlob(blob: Blob, remark: string) {
@@ -75,7 +48,7 @@ export default function QrPanel({
 
   async function copyImage() {
     const svgEl = qrRef.current?.querySelector('svg') as SVGSVGElement | null;
-    const blob = await svgToPngBlob(svgEl, size);
+    const blob = await qrPngBlob(svgEl, remark, size);
     if (!blob) return;
     try {
       await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
@@ -87,7 +60,7 @@ export default function QrPanel({
 
   async function downloadImage() {
     const svgEl = qrRef.current?.querySelector('svg') as SVGSVGElement | null;
-    const blob = await svgToPngBlob(svgEl, size);
+    const blob = await qrPngBlob(svgEl, remark, size);
     if (blob) downloadImageBlob(blob, remark);
   }
 

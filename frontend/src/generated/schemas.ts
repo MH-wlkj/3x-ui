@@ -969,6 +969,83 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "CardKey": {
+    "description": "CardKey is a card-key license record. A card key can only be activated by\none panel: activation writes the panel's machine code into MachineCode, and\nan empty MachineCode means the key is unused. Type selects the license\ntier: local (single panel) or multi-node.",
+    "properties": {
+      "activatedAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "code": {
+        "type": "string"
+      },
+      "createdAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "machineCode": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "activatedAt",
+      "code",
+      "createdAt",
+      "id",
+      "machineCode",
+      "type"
+    ],
+    "type": "object"
+  },
+  "CardKeyView": {
+    "properties": {
+      "activated": {
+        "example": false,
+        "type": "boolean"
+      },
+      "activatedAt": {
+        "example": 0,
+        "format": "int64",
+        "type": "integer"
+      },
+      "code": {
+        "example": "MN-A1B2C3D4E5F6G7H8",
+        "type": "string"
+      },
+      "createdAt": {
+        "example": 1736000000,
+        "format": "int64",
+        "type": "integer"
+      },
+      "id": {
+        "example": 1,
+        "type": "integer"
+      },
+      "machineCode": {
+        "type": "string"
+      },
+      "type": {
+        "example": "multi-node",
+        "type": "string"
+      }
+    },
+    "required": [
+      "activated",
+      "activatedAt",
+      "code",
+      "createdAt",
+      "id",
+      "machineCode",
+      "type"
+    ],
+    "type": "object"
+  },
   "Client": {
     "description": "Client represents a client configuration for Xray inbounds with traffic limits and settings.",
     "properties": {
@@ -1986,6 +2063,29 @@ export const SCHEMAS: Record<string, unknown> = {
       "ssMethod",
       "tag",
       "tlsFlowCapable"
+    ],
+    "type": "object"
+  },
+  "LicenseStatus": {
+    "properties": {
+      "activated": {
+        "type": "boolean"
+      },
+      "code": {
+        "type": "string"
+      },
+      "machineCode": {
+        "type": "string"
+      },
+      "type": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "activated",
+      "code",
+      "machineCode",
+      "type"
     ],
     "type": "object"
   },

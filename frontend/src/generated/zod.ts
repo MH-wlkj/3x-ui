@@ -253,6 +253,27 @@ export const ApiTokenViewSchema = z.object({
 });
 export type ApiTokenView = z.infer<typeof ApiTokenViewSchema>;
 
+export const CardKeySchema = z.object({
+  activatedAt: z.number().int(),
+  code: z.string(),
+  createdAt: z.number().int(),
+  id: z.number().int(),
+  machineCode: z.string(),
+  type: z.string(),
+});
+export type CardKey = z.infer<typeof CardKeySchema>;
+
+export const CardKeyViewSchema = z.object({
+  activated: z.boolean(),
+  activatedAt: z.number().int(),
+  code: z.string(),
+  createdAt: z.number().int(),
+  id: z.number().int(),
+  machineCode: z.string(),
+  type: z.string(),
+});
+export type CardKeyView = z.infer<typeof CardKeyViewSchema>;
+
 export const ClientSchema = z.object({
   adTag: z.string().optional(),
   allowedIPs: z.array(z.string()).optional(),
@@ -493,6 +514,14 @@ export const InboundOptionSchema = z.object({
   wgPublicKey: z.string().optional(),
 });
 export type InboundOption = z.infer<typeof InboundOptionSchema>;
+
+export const LicenseStatusSchema = z.object({
+  activated: z.boolean(),
+  code: z.string(),
+  machineCode: z.string(),
+  type: z.string(),
+});
+export type LicenseStatus = z.infer<typeof LicenseStatusSchema>;
 
 export const MsgSchema = z.object({
   msg: z.string(),

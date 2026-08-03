@@ -995,6 +995,83 @@
         ],
         "type": "object"
       },
+      "CardKey": {
+        "description": "CardKey is a card-key license record. A card key can only be activated by\none panel: activation writes the panel's machine code into MachineCode, and\nan empty MachineCode means the key is unused. Type selects the license\ntier: local (single panel) or multi-node.",
+        "properties": {
+          "activatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "code": {
+            "type": "string"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "activatedAt",
+          "code",
+          "createdAt",
+          "id",
+          "machineCode",
+          "type"
+        ],
+        "type": "object"
+      },
+      "CardKeyView": {
+        "properties": {
+          "activated": {
+            "example": false,
+            "type": "boolean"
+          },
+          "activatedAt": {
+            "example": 0,
+            "format": "int64",
+            "type": "integer"
+          },
+          "code": {
+            "example": "MN-A1B2C3D4E5F6G7H8",
+            "type": "string"
+          },
+          "createdAt": {
+            "example": 1736000000,
+            "format": "int64",
+            "type": "integer"
+          },
+          "id": {
+            "example": 1,
+            "type": "integer"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "type": {
+            "example": "multi-node",
+            "type": "string"
+          }
+        },
+        "required": [
+          "activated",
+          "activatedAt",
+          "code",
+          "createdAt",
+          "id",
+          "machineCode",
+          "type"
+        ],
+        "type": "object"
+      },
       "Client": {
         "description": "Client represents a client configuration for Xray inbounds with traffic limits and settings.",
         "properties": {
@@ -2015,6 +2092,29 @@
         ],
         "type": "object"
       },
+      "LicenseStatus": {
+        "properties": {
+          "activated": {
+            "type": "boolean"
+          },
+          "code": {
+            "type": "string"
+          },
+          "machineCode": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "activated",
+          "code",
+          "machineCode",
+          "type"
+        ],
+        "type": "object"
+      },
       "Msg": {
         "properties": {
           "msg": {
@@ -2571,6 +2671,10 @@
     {
       "name": "WebSocket",
       "description": "Real-time status updates via WebSocket. Connect once at <code>ws://<panel>/ws</code> to receive a stream of JSON messages without polling. Requires an authenticated session cookie (Bearer token auth is not supported). Each message has a <code>type</code> field that identifies the payload shape."
+    },
+    {
+      "name": "License (Card Keys)",
+      "description": "Card-key activation and management. Each card key can only be activated by a single panel: activation binds the key to the panel's machine code. Keys are created here (or in the Card Keys page) and then redeemed on the target panel via /activate. Type is either local (single panel) or multi-node (unlocks node management)."
     }
   ],
   "paths": {
@@ -10878,6 +10982,269 @@
                 "example": {
                   "type": "invalidate",
                   "resource": "inbounds"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/license/status": {
+      "get": {
+        "tags": [
+          "License (Card Keys)"
+        ],
+        "summary": "Return the current license status: this panel's machine code, whether it is activated, and the bound card type and code when active.",
+        "operationId": "get_panel_api_license_status",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "activated": false,
+                    "code": "",
+                    "machineCode": "",
+                    "type": ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/license/activate": {
+      "post": {
+        "tags": [
+          "License (Card Keys)"
+        ],
+        "summary": "Redeem a card key on this panel. On success the key is bound to this panel's machine code; a key already bound to another panel is rejected.",
+        "operationId": "post_panel_api_license_activate",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "code": "MN-A1B2C3D4E5F6G7H8"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/LicenseStatus"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "machineCode": "…",
+                    "activated": true,
+                    "type": "multi-node",
+                    "code": "MN-A1B2C3D4E5F6G7H8"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Error response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    }
+                  }
+                },
+                "example": {
+                  "success": false,
+                  "msg": "license code is already bound to another panel"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/license/create": {
+      "post": {
+        "tags": [
+          "License (Card Keys)"
+        ],
+        "summary": "Generate one or more card keys of a given type (local or multi-node). Returns the newly created codes.",
+        "operationId": "post_panel_api_license_create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "type": "multi-node",
+                "count": 5
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    "MN-A1B2C3D4E5F6G7H8",
+                    "MN-…"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/license/list": {
+      "get": {
+        "tags": [
+          "License (Card Keys)"
+        ],
+        "summary": "List every card key with its type, bound machine code, activation state, and timestamps.",
+        "operationId": "get_panel_api_license_list",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/CardKeyView"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "id": 1,
+                      "code": "MN-A1B2C3D4E5F6G7H8",
+                      "type": "multi-node",
+                      "machineCode": "",
+                      "activated": false,
+                      "createdAt": 1736000000,
+                      "activatedAt": 0
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/license/delete": {
+      "post": {
+        "tags": [
+          "License (Card Keys)"
+        ],
+        "summary": "Delete a card key by id.",
+        "operationId": "post_panel_api_license_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true
                 }
               }
             }

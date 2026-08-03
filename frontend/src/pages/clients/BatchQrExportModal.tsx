@@ -22,6 +22,7 @@ import {
 
 import { HttpUtil } from '@/utils';
 import type { ClientRecord } from '@/hooks/useClients';
+import { qrPngDataUrl } from '@/lib/qr/png';
 
 interface BatchQrExportModalProps {
   open: boolean;
@@ -37,38 +38,6 @@ interface ClientLinkRow {
   links: string[];
   loading: boolean;
   error?: string;
-}
-
-async function svgToDataUrl(svgEl: SVGSVGElement | null, size: number): Promise<string> {
-  if (!svgEl) return '';
-  const svgData = new XMLSerializer().serializeToString(svgEl);
-  const svgBlob = new Blob([svgData], { type: 'image/svg+xml;charset=utf-8' });
-  const url = URL.createObjectURL(svgBlob);
-  return new Promise<string>((resolve) => {
-    const img = new Image();
-    img.onload = () => {
-      const canvas = document.createElement('canvas');
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) {
-        URL.revokeObjectURL(url);
-        resolve('');
-        return;
-      }
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, size, size);
-      ctx.drawImage(img, 0, 0, size, size);
-      URL.revokeObjectURL(url);
-      const dataUrl = canvas.toDataURL('image/png');
-      resolve(dataUrl);
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      resolve('');
-    };
-    img.src = url;
-  });
 }
 
 function escapeHtml(str: string): string {
@@ -202,7 +171,7 @@ export default function BatchQrExportModal({
         if (!svgEl) continue;
         // Clone to avoid mutating the rendered element
         const clone = svgEl.cloneNode(true) as SVGSVGElement;
-        const dataUrl = await svgToDataUrl(clone, 200);
+        const dataUrl = await qrPngDataUrl(clone, row.email, 200);
         if (dataUrl) qrDataUrls.set(row.email, dataUrl);
       }
 
@@ -310,7 +279,7 @@ ${rowsHtml}
         const svgEl = container.querySelector('svg') as SVGSVGElement | null;
         if (!svgEl) continue;
         const clone = svgEl.cloneNode(true) as SVGSVGElement;
-        const dataUrl = await svgToDataUrl(clone, 150);
+        const dataUrl = await qrPngDataUrl(clone, row.email, 150);
         if (dataUrl) qrDataUrls.set(row.email, dataUrl);
       }
 
