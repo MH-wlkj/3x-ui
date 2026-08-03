@@ -227,23 +227,6 @@ export const EXAMPLES: Record<string, unknown> = {
     "name": "central-panel-a",
     "token": "new-token-string"
   },
-  "CardKey": {
-    "activatedAt": 0,
-    "code": "",
-    "createdAt": 0,
-    "id": 0,
-    "machineCode": "",
-    "type": ""
-  },
-  "CardKeyView": {
-    "activated": false,
-    "activatedAt": 0,
-    "code": "MN-A1B2C3D4E5F6G7H8",
-    "createdAt": 1736000000,
-    "id": 1,
-    "machineCode": "",
-    "type": "multi-node"
-  },
   "Client": {
     "adTag": "0123456789abcdef0123456789abcdef",
     "allowedIPs": [
@@ -499,12 +482,6 @@ export const EXAMPLES: Record<string, unknown> = {
     "wgDns": "",
     "wgMtu": 0,
     "wgPublicKey": ""
-  },
-  "LicenseStatus": {
-    "activated": false,
-    "code": "",
-    "machineCode": "",
-    "type": ""
   },
   "Msg": {
     "msg": "",

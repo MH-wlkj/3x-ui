@@ -237,25 +237,6 @@ export interface ApiTokenView {
   token?: string;
 }
 
-export interface CardKey {
-  activatedAt: number;
-  code: string;
-  createdAt: number;
-  id: number;
-  machineCode: string;
-  type: string;
-}
-
-export interface CardKeyView {
-  activated: boolean;
-  activatedAt: number;
-  code: string;
-  createdAt: number;
-  id: number;
-  machineCode: string;
-  type: string;
-}
-
 export interface Client {
   adTag?: string;
   allowedIPs?: string[];
@@ -482,13 +463,6 @@ export interface InboundOption {
   wgDns?: string;
   wgMtu?: number;
   wgPublicKey?: string;
-}
-
-export interface LicenseStatus {
-  activated: boolean;
-  code: string;
-  machineCode: string;
-  type: string;
 }
 
 export interface Msg {
