@@ -75,6 +75,7 @@ interface InboundOption {
   protocol?: string;
   port?: number;
   nodeId?: number | null;
+  nodeName?: string;
 }
 
 interface PreviewRow {
@@ -146,9 +147,9 @@ function parseNodes(text: string): NodeLine[] {
 
 function formatInboundLabel(ib: InboundOption): string {
   const proto = ib.protocol || '?';
-  const label = ib.remark || ib.tag || `#${ib.id}`;
   const port = ib.port ? `:${ib.port}` : '';
-  return `${proto} | ${label}${port}`;
+  const name = ib.nodeName || ib.remark || ib.tag || `#${ib.id}`;
+  return `${proto} | ${name}${port}`;
 }
 
 export default function ClientGeneratorPage() {

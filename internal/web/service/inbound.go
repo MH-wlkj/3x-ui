@@ -307,6 +307,9 @@ type InboundOption struct {
 	// Hosting node; nil for this panel's own inbounds. Lets the clients
 	// page map a node filter onto inbound IDs (#4997).
 	NodeId *int `json:"nodeId,omitempty"`
+	// Hosting node name (from the nodes table); empty for this panel's own
+	// inbounds. Lets the client generator label a target inbound by node.
+	NodeName string `json:"nodeName,omitempty"`
 	// Share-host resolution inputs, mirroring the subscription's
 	// resolveInboundAddress so the clients page renders a node-managed WireGuard
 	// Endpoint that points at the node, not the master panel. NodeAddress is the
@@ -335,9 +338,10 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 		ShareAddrStrategy string `gorm:"column:share_addr_strategy"`
 		NodeId            *int   `gorm:"column:node_id"`
 		NodeAddress       string `gorm:"column:node_address"`
+		NodeName          string `gorm:"column:node_name"`
 	}
 	err := db.Table("inbounds").
-		Select("inbounds.id, inbounds.remark, inbounds.tag, inbounds.protocol, inbounds.port, inbounds.enable, inbounds.stream_settings, inbounds.settings, inbounds.listen, inbounds.share_addr, inbounds.share_addr_strategy, inbounds.node_id, COALESCE(nodes.address, '') AS node_address").
+		Select("inbounds.id, inbounds.remark, inbounds.tag, inbounds.protocol, inbounds.port, inbounds.enable, inbounds.stream_settings, inbounds.settings, inbounds.listen, inbounds.share_addr, inbounds.share_addr_strategy, inbounds.node_id, COALESCE(nodes.address, '') AS node_address, COALESCE(nodes.name, '') AS node_name").
 		Joins("LEFT JOIN nodes ON nodes.id = inbounds.node_id").
 		Where("inbounds.user_id = ?", userId).
 		Order("inbounds.id ASC").
@@ -367,6 +371,7 @@ func (s *InboundService) GetInboundOptions(userId int) ([]InboundOption, error) 
 			MtprotoDomain:     inboundMtprotoDomain(r.Protocol, r.Settings),
 			NodeId:            r.NodeId,
 			NodeAddress:       r.NodeAddress,
+			NodeName:          r.NodeName,
 			Listen:            r.Listen,
 			ShareAddr:         r.ShareAddr,
 			ShareAddrStrategy: shareAddrStrategy,

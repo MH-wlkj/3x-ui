@@ -452,6 +452,7 @@ export interface InboundOption {
   mtprotoDomain?: string;
   nodeAddress?: string;
   nodeId?: number | null;
+  nodeName?: string;
   port: number;
   protocol: string;
   remark: string;

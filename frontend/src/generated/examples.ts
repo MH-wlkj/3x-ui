@@ -471,6 +471,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "mtprotoDomain": "",
     "nodeAddress": "",
     "nodeId": null,
+    "nodeName": "",
     "port": 443,
     "protocol": "vless",
     "remark": "VLESS-443",

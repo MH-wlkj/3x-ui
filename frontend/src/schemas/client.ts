@@ -57,6 +57,8 @@ export const InboundOptionSchema = z.object({
   mtprotoDomain: z.string().optional(),
   // Hosting node id; absent/null for this panel's own inbounds (#4997).
   nodeId: z.number().nullable().optional(),
+  // Hosting node name; absent for this panel's own inbounds.
+  nodeName: z.string().optional(),
   // Share-host resolution inputs, mirroring the backend resolveInboundAddress so
   // the clients page picks the same WireGuard endpoint host as the subscription:
   // the hosting node address, the inbound listen, and its share-address strategy.

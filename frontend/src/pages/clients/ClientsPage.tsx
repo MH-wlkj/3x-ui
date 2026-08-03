@@ -177,8 +177,8 @@ function gbToBytes(gb: number | undefined): number {
 }
 
 const SORT_OPTIONS: { value: string; column: string; order: 'ascend' | 'descend'; labelKey: string }[] = [
-  { value: 'createdAt:ascend', column: 'createdAt', order: 'ascend', labelKey: 'pages.clients.sortOldest' },
   { value: 'createdAt:descend', column: 'createdAt', order: 'descend', labelKey: 'pages.clients.sortNewest' },
+  { value: 'createdAt:ascend', column: 'createdAt', order: 'ascend', labelKey: 'pages.clients.sortOldest' },
   { value: 'updatedAt:descend', column: 'updatedAt', order: 'descend', labelKey: 'pages.clients.sortRecentlyUpdated' },
   { value: 'lastOnline:descend', column: 'lastOnline', order: 'descend', labelKey: 'pages.clients.sortRecentlyOnline' },
   { value: 'email:ascend', column: 'email', order: 'ascend', labelKey: 'pages.clients.sortEmailAZ' },
@@ -227,6 +227,16 @@ export default function ClientsPage() {
   // Node list for the Nodes filter; the section only renders when the panel
   // actually manages nodes (#4997).
   const { nodes } = useNodesQuery();
+
+  // 0 is the "local panel" sentinel (inbounds without a nodeId) — see
+  // ClientFilters.nodeIds (#4997).
+  const nodeOptions = useMemo(
+    () => [
+      { value: 0, label: t('pages.clients.filters.localPanel') },
+      ...nodes.map((n) => ({ value: n.id, label: n.name || `#${n.id}` })),
+    ],
+    [nodes, t],
+  );
 
   const [togglingEmail, setTogglingEmail] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -1220,6 +1230,21 @@ export default function ClientsPage() {
                             {!isMobile && t('filter')}
                           </Button>
                         </Badge>
+                        {nodes.length > 0 && (
+                          <Select
+                            mode="multiple"
+                            value={filters.nodeIds}
+                            onChange={(v) => setFilters({ ...filters, nodeIds: v as number[] })}
+                            options={nodeOptions}
+                            placeholder={t('pages.clients.filters.nodes')}
+                            maxTagCount="responsive"
+                            allowClear
+                            showSearch={{ optionFilterProp: 'label' }}
+                            size={isMobile ? 'small' : 'middle'}
+                            style={{ minWidth: isMobile ? 130 : 180 }}
+                            aria-label={t('pages.clients.filters.nodes')}
+                          />
+                        )}
                         <Select
                           value={sortValueFor(sortColumn, sortOrder)}
                           aria-label={t('sort')}
@@ -1609,7 +1634,6 @@ export default function ClientsPage() {
             inbounds={inbounds}
             protocols={protocolOptions}
             groups={groupOptions}
-            nodes={nodes}
           />
         </LazyMount>
         <LazyMount when={textOpen}>

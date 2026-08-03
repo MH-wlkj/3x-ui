@@ -1938,6 +1938,10 @@ export const SCHEMAS: Record<string, unknown> = {
         "nullable": true,
         "type": "integer"
       },
+      "nodeName": {
+        "description": "Hosting node name (from the nodes table); empty for this panel's own\ninbounds. Lets the client generator label a target inbound by node.",
+        "type": "string"
+      },
       "port": {
         "example": 443,
         "type": "integer"

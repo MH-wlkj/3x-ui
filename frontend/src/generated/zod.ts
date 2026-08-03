@@ -480,6 +480,7 @@ export const InboundOptionSchema = z.object({
   mtprotoDomain: z.string().optional(),
   nodeAddress: z.string().optional(),
   nodeId: z.number().int().nullable().optional(),
+  nodeName: z.string().optional(),
   port: z.number().int(),
   protocol: z.string(),
   remark: z.string(),
