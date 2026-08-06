@@ -17,7 +17,7 @@ require (
 	github.com/nicksnyder/go-i18n/v2 v2.6.1
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/robfig/cron/v3 v3.0.1
-	github.com/shirou/gopsutil/v4 v4.26.6
+	github.com/shirou/gopsutil/v4 v4.26.7
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/valyala/fasthttp v1.72.0
 	github.com/xlzd/gotp v0.1.0
@@ -43,7 +43,7 @@ require (
 	github.com/bytedance/sonic/loader v0.5.1 // indirect
 	github.com/cloudflare/circl v1.6.4 // indirect
 	github.com/cloudwego/base64x v0.1.7 // indirect
-	github.com/ebitengine/purego v0.10.1 // indirect
+	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/gin-contrib/sse v1.1.1 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.8 // indirect
