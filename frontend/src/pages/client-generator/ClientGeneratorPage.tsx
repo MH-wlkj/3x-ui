@@ -86,6 +86,7 @@ interface PreviewRow {
   nodeUser: string;
   protocol: string;
   traffic: string;
+  expiry: string;
   inboundLabel: string;
 }
 
@@ -94,6 +95,7 @@ interface GeneratorFormValues {
   emailPrefix: string;
   emailSuffix: string;
   totalGB: number;
+  expiryDays: number;
   inboundId: number;
   namingMode: 'ip' | 'seq';
   startNum: number;
@@ -107,6 +109,7 @@ const DEFAULT_VALUES: GeneratorFormValues = {
   emailPrefix: 'MZ1-',
   emailSuffix: '',
   totalGB: 0,
+  expiryDays: 0,
   inboundId: 0,
   namingMode: 'ip',
   startNum: 1,
@@ -267,7 +270,7 @@ export default function ClientGeneratorPage() {
           email: emailName,
           limitIp: 0,
           totalGB: Math.round(formValues.totalGB * SizeFormatter.ONE_GB),
-          expiryTime: 0,
+          expiryTime: formValues.expiryDays > 0 ? Date.now() + formValues.expiryDays * 86400000 : 0,
           enable: true,
           tgId: 0,
           subId: RandomUtil.randomLowerAndNum(16),
@@ -505,7 +508,13 @@ export default function ClientGeneratorPage() {
       title: '流量',
       dataIndex: 'traffic',
       key: 'traffic',
-      width: 100,
+      width: 90,
+    },
+    {
+      title: '到期',
+      dataIndex: 'expiry',
+      key: 'expiry',
+      width: 90,
     },
     {
       title: '目标入站',
@@ -520,6 +529,7 @@ export default function ClientGeneratorPage() {
     if (!generated || parsedNodes.length === 0) return [];
     const inboundLabel = selectedInbound ? formatInboundLabel(selectedInbound) : `#${formValues.inboundId}`;
     const trafficStr = formValues.totalGB > 0 ? `${formValues.totalGB} GB` : '∞';
+    const expiryStr = formValues.expiryDays > 0 ? `${formValues.expiryDays} 天` : '永久';
     return parsedNodes.map((node, idx) => {
       let email: string;
       if (formValues.namingMode === 'seq') {
@@ -539,6 +549,7 @@ export default function ClientGeneratorPage() {
         nodeUser: node.user,
         protocol: formValues.outboundProtocol,
         traffic: trafficStr,
+        expiry: expiryStr,
         inboundLabel,
       };
     });
@@ -592,6 +603,18 @@ export default function ClientGeneratorPage() {
                     </Form.Item>
                   </Col>
                   <Col xs={24} sm={12} md={6}>
+                    <Form.Item label="有效期天数 (0=永久)" style={{ marginBottom: 0 }}>
+                      <InputNumber
+                        style={{ width: '100%' }}
+                        min={0}
+                        defaultValue={DEFAULT_VALUES.expiryDays}
+                        onChange={(v) => setFormValues((prev) => ({ ...prev, expiryDays: v || 0 }))}
+                      />
+                    </Form.Item>
+                  </Col>
+                </Row>
+                <Row gutter={[16, 12]} style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--color-border, #d9d9d9)' }}>
+                  <Col xs={24} sm={12} md={6}>
                     <Form.Item label="目标入站" style={{ marginBottom: 0 }}>
                       <Select
                         style={{ width: '100%' }}
@@ -606,9 +629,7 @@ export default function ClientGeneratorPage() {
                       />
                     </Form.Item>
                   </Col>
-                </Row>
-                <Row gutter={[16, 12]} style={{ marginTop: 12, paddingTop: 12, borderTop: '1px dashed var(--color-border, #d9d9d9)' }}>
-                  <Col xs={24} sm={6}>
+                  <Col xs={24} sm={12} md={6}>
                     <Form.Item label="命名规则" style={{ marginBottom: 0 }}>
                       <select
                         style={{ width: '100%', height: 32, border: '1px solid #d9d9d9', borderRadius: 6, padding: '0 8px' }}
@@ -624,7 +645,7 @@ export default function ClientGeneratorPage() {
                       </select>
                     </Form.Item>
                   </Col>
-                  <Col xs={24} sm={6}>
+                  <Col xs={24} sm={12} md={6}>
                     <Form.Item label="出站协议" style={{ marginBottom: 0 }}>
                       <Select
                         style={{ width: '100%' }}
@@ -637,7 +658,7 @@ export default function ClientGeneratorPage() {
                       />
                     </Form.Item>
                   </Col>
-                  <Col xs={24} sm={6}>
+                  <Col xs={24} sm={12} md={6}>
                     <Form.Item label="XTLS Vision Flow" style={{ marginBottom: 0 }}>
                       <Space>
                         <Switch
