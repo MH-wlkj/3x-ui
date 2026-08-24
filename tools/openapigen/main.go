@@ -25,6 +25,7 @@ func run(root, outDir string) error {
 			Path: resolveRel(root, "internal/database/model"),
 			StructAllow: setOf(
 				"User",
+				"PanelUser",
 				"Inbound",
 				"FallbackParentInfo",
 				"OutboundTraffics",
@@ -85,6 +86,10 @@ func run(root, outDir string) error {
 		{
 			Path:        resolveRel(root, "internal/web/service/panel"),
 			StructAllow: setOf("ApiTokenView", "PanelUpdateStatus"),
+		},
+		{
+			Path:        resolveRel(root, "internal/web/service/portal"),
+			StructAllow: setOf("UserStatus", "PortalClientView"),
 		},
 	}
 

@@ -59,6 +59,7 @@ const (
 func allModels() []any {
 	return []any{
 		&model.User{},
+		&model.PanelUser{},
 		&model.Inbound{},
 		&model.OutboundTraffics{},
 		&model.Setting{},

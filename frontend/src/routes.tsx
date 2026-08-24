@@ -13,6 +13,8 @@ const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'));
 const XrayPage = lazy(() => import('@/pages/xray/XrayPage'));
 const ApiDocsPage = lazy(() => import('@/pages/api-docs/ApiDocsPage'));
 const ClientGeneratorPage = lazy(() => import('@/pages/client-generator/ClientGeneratorPage'));
+const UsersPage = lazy(() => import('@/pages/users/UsersPage'));
+const PortalPage = lazy(() => import('@/pages/portal/PortalPage'));
 
 function withSuspense(node: React.ReactNode) {
   return <Suspense fallback={null}>{node}</Suspense>;
@@ -35,7 +37,12 @@ const routes: RouteObject[] = [
       { path: 'routing', element: withSuspense(<XrayPage />) },
       { path: 'api-docs', element: withSuspense(<ApiDocsPage />) },
       { path: 'client-generator', element: withSuspense(<ClientGeneratorPage />) },
+      { path: 'users', element: withSuspense(<UsersPage />) },
     ],
+  },
+  {
+    path: '/portal',
+    element: withSuspense(<PortalPage />),
   },
 ];
 

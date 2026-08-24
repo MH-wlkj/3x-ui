@@ -2323,6 +2323,96 @@
         ],
         "type": "object"
       },
+      "PanelUser": {
+        "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited).",
+        "properties": {
+          "clientLimit": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "inboundIds": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientLimit",
+          "createdAt",
+          "enable",
+          "id",
+          "inboundIds",
+          "updatedAt",
+          "username"
+        ],
+        "type": "object"
+      },
+      "PortalClientView": {
+        "description": "PortalClientView is one tenant-owned client for the /clients list.",
+        "properties": {
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "down": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "email": {
+            "type": "string"
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "expiryTime": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "inboundId": {
+            "type": "integer"
+          },
+          "inboundTag": {
+            "type": "string"
+          },
+          "totalGB": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "up": {
+            "format": "int64",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "createdAt",
+          "down",
+          "email",
+          "enable",
+          "expiryTime",
+          "inboundId",
+          "inboundTag",
+          "totalGB",
+          "up"
+        ],
+        "type": "object"
+      },
       "ProbeResultUI": {
         "properties": {
           "cpuPct": {
@@ -2516,6 +2606,37 @@
           "username"
         ],
         "type": "object"
+      },
+      "UserStatus": {
+        "description": "UserStatus is the tenant's quota view returned by /me.",
+        "properties": {
+          "clientLimit": {
+            "type": "integer"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "inboundIds": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "usedClients": {
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientLimit",
+          "id",
+          "inboundIds",
+          "usedClients",
+          "username"
+        ],
+        "type": "object"
       }
     }
   },
@@ -2575,6 +2696,10 @@
     {
       "name": "WebSocket",
       "description": "Real-time status updates via WebSocket. Connect once at <code>ws://<panel>/ws</code> to receive a stream of JSON messages without polling. Requires an authenticated session cookie (Bearer token auth is not supported). Each message has a <code>type</code> field that identifies the payload shape."
+    },
+    {
+      "name": "Tenant Portal (User Management)",
+      "description": "Admin tenant-user management lives under /panel/api/portal/users and uses the same session/Bearer auth as the rest of /panel/api. The tenant-facing portal API lives under /portal/api and authenticates with a bearer token returned by POST /portal/api/login. Each tenant can only create and manage clients on the inbounds an admin assigned to them, and is capped at a total number of clients."
     }
   ],
   "paths": {
@@ -10883,6 +11008,582 @@
                 "example": {
                   "type": "invalidate",
                   "resource": "inbounds"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/portal/users": {
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "List all tenant accounts.",
+        "operationId": "get_panel_api_portal_users",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PanelUser"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "clientLimit": 0,
+                      "createdAt": 0,
+                      "enable": false,
+                      "id": 0,
+                      "inboundIds": [
+                        0
+                      ],
+                      "updatedAt": 0,
+                      "username": ""
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/portal/users/create": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Create a tenant account with allowed inbounds and a client limit.",
+        "operationId": "post_panel_api_portal_users_create",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "username": "reseller1",
+                "password": "secret",
+                "inboundIds": [
+                  1,
+                  2
+                ],
+                "clientLimit": 50,
+                "enable": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "user created"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/portal/users/update": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Update a tenant account (username/password/inbounds/limit). A blank username or password leaves that value unchanged.",
+        "operationId": "post_panel_api_portal_users_update",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "id": 1,
+                "username": "reseller1",
+                "inboundIds": [
+                  1,
+                  2
+                ],
+                "clientLimit": 50,
+                "enable": true
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "user updated"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/panel/api/portal/users/delete": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Delete a tenant account.",
+        "operationId": "post_panel_api_portal_users_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "id": 1
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "user deleted"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/login": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Tenant login. Returns a bearer token valid for 24 hours.",
+        "operationId": "post_portal_api_login",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "username": "reseller1",
+                "password": "secret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "token": "..."
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/logout": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Invalidate the current bearer token.",
+        "operationId": "post_portal_api_logout",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/me": {
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Tenant quota view: allowed inbounds, client limit and used count. Requires Bearer token.",
+        "operationId": "get_portal_api_me",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/UserStatus"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "clientLimit": 0,
+                    "id": 0,
+                    "inboundIds": [
+                      0
+                    ],
+                    "usedClients": 0,
+                    "username": ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/inbounds": {
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Inbound options the tenant is allowed to target. Requires Bearer token.",
+        "operationId": "get_portal_api_inbounds",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/InboundOption"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "enable": true,
+                      "id": 1,
+                      "listen": "",
+                      "mtprotoDomain": "",
+                      "nodeAddress": "",
+                      "nodeId": null,
+                      "nodeName": "",
+                      "port": 443,
+                      "protocol": "vless",
+                      "remark": "VLESS-443",
+                      "shareAddr": "",
+                      "shareAddrStrategy": "",
+                      "ssMethod": "",
+                      "tag": "in-443-tcp",
+                      "tlsFlowCapable": true,
+                      "wgDns": "",
+                      "wgMtu": 0,
+                      "wgPublicKey": ""
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Create one client on an allowed inbound (enforces inbound permission and client quota). Requires Bearer token.",
+        "operationId": "post_portal_api_clients",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "inboundId": 1,
+                "email": "user-001",
+                "totalGB": 0,
+                "expiryTime": 0
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "List the tenant’s own clients with usage and expiry. Requires Bearer token.",
+        "operationId": "get_portal_api_clients",
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "type": "array",
+                      "items": {
+                        "$ref": "#/components/schemas/PortalClientView"
+                      }
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": [
+                    {
+                      "createdAt": 0,
+                      "down": 0,
+                      "email": "",
+                      "enable": false,
+                      "expiryTime": 0,
+                      "inboundId": 0,
+                      "inboundTag": "",
+                      "totalGB": 0,
+                      "up": 0
+                    }
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients/delete": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Delete one of the tenant’s own clients by email. Requires Bearer token.",
+        "operationId": "post_portal_api_clients_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "email": "user-001"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/password": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Change the tenant’s own password. Requires Bearer token.",
+        "operationId": "post_portal_api_password",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "oldPassword": "secret",
+                "newPassword": "newsecret"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "password updated"
                 }
               }
             }

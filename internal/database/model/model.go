@@ -42,6 +42,20 @@ type User struct {
 	LoginEpoch int64  `json:"-" gorm:"default:0"`
 }
 
+// PanelUser represents a tenant account that manages clients on a restricted
+// set of inbounds through the user portal. ClientLimit caps the total number
+// of clients the tenant may create (0 = unlimited).
+type PanelUser struct {
+	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Username    string `json:"username" gorm:"uniqueIndex"`
+	Password    string `json:"-"`
+	InboundIds  []int  `json:"inboundIds" gorm:"serializer:json"`
+	ClientLimit int    `json:"clientLimit"`
+	Enable      bool   `json:"enable" gorm:"default:true"`
+	CreatedAt   int64  `json:"createdAt"`
+	UpdatedAt   int64  `json:"updatedAt"`
+}
+
 // Inbound represents an Xray inbound configuration with traffic statistics and settings.
 type Inbound struct {
 	Id                   int                  `json:"id" form:"id" gorm:"primaryKey;autoIncrement" example:"1"`                                                                                                     // Unique identifier

@@ -250,6 +250,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	g.GET("/panel/api/openapi.json", controller.ServeOpenAPISpec)
 	s.api = controller.NewAPIController(g)
 
+	// Token-authenticated tenant portal API (outside the admin API group)
+	controller.NewPortalTokenController(g)
+
+	// Public tenant portal shell (no admin session required)
+	g.GET("/panel/portal", controller.ServePortalSPA)
+
 	// Initialize WebSocket hub
 	s.wsHub = websocket.NewHub()
 	go s.wsHub.Run()

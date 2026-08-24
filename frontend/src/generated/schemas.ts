@@ -2297,6 +2297,96 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "PanelUser": {
+    "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited).",
+    "properties": {
+      "clientLimit": {
+        "type": "integer"
+      },
+      "createdAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "enable": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "inboundIds": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "updatedAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "clientLimit",
+      "createdAt",
+      "enable",
+      "id",
+      "inboundIds",
+      "updatedAt",
+      "username"
+    ],
+    "type": "object"
+  },
+  "PortalClientView": {
+    "description": "PortalClientView is one tenant-owned client for the /clients list.",
+    "properties": {
+      "createdAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "down": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "email": {
+        "type": "string"
+      },
+      "enable": {
+        "type": "boolean"
+      },
+      "expiryTime": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "inboundId": {
+        "type": "integer"
+      },
+      "inboundTag": {
+        "type": "string"
+      },
+      "totalGB": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "up": {
+        "format": "int64",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "createdAt",
+      "down",
+      "email",
+      "enable",
+      "expiryTime",
+      "inboundId",
+      "inboundTag",
+      "totalGB",
+      "up"
+    ],
+    "type": "object"
+  },
   "ProbeResultUI": {
     "properties": {
       "cpuPct": {
@@ -2487,6 +2577,37 @@ export const SCHEMAS: Record<string, unknown> = {
     "required": [
       "id",
       "password",
+      "username"
+    ],
+    "type": "object"
+  },
+  "UserStatus": {
+    "description": "UserStatus is the tenant's quota view returned by /me.",
+    "properties": {
+      "clientLimit": {
+        "type": "integer"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "inboundIds": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "usedClients": {
+        "type": "integer"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "clientLimit",
+      "id",
+      "inboundIds",
+      "usedClients",
       "username"
     ],
     "type": "object"

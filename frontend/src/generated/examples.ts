@@ -547,6 +547,28 @@ export const EXAMPLES: Record<string, unknown> = {
     "runId": "1735689600123456789",
     "state": "success"
   },
+  "PanelUser": {
+    "clientLimit": 0,
+    "createdAt": 0,
+    "enable": false,
+    "id": 0,
+    "inboundIds": [
+      0
+    ],
+    "updatedAt": 0,
+    "username": ""
+  },
+  "PortalClientView": {
+    "createdAt": 0,
+    "down": 0,
+    "email": "",
+    "enable": false,
+    "expiryTime": 0,
+    "inboundId": 0,
+    "inboundTag": "",
+    "totalGB": 0,
+    "up": 0
+  },
   "ProbeResultUI": {
     "cpuPct": 12.5,
     "error": "",
@@ -589,6 +611,15 @@ export const EXAMPLES: Record<string, unknown> = {
   "User": {
     "id": 0,
     "password": "",
+    "username": ""
+  },
+  "UserStatus": {
+    "clientLimit": 0,
+    "id": 0,
+    "inboundIds": [
+      0
+    ],
+    "usedClients": 0,
     "username": ""
   }
 };

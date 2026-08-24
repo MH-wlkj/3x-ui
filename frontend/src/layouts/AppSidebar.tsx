@@ -30,6 +30,7 @@ import {
   TeamOutlined,
   ThunderboltOutlined,
   ToolOutlined,
+  UserOutlined,
 } from '@ant-design/icons';
 
 import { HttpUtil } from '@/utils';
@@ -42,7 +43,7 @@ const SIDEBAR_COLLAPSED_KEY = 'isSidebarCollapsed';
 const REPO_URL = 'https://t.me/mhwl111';
 const LOGOUT_KEY = '__logout__';
 
-type IconName = 'dashboard' | 'inbound' | 'team' | 'groups' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'apidocs' | 'outbound' | 'routing' | 'generator';
+type IconName = 'dashboard' | 'inbound' | 'team' | 'groups' | 'setting' | 'tool' | 'cluster' | 'hosts' | 'logout' | 'apidocs' | 'outbound' | 'routing' | 'generator' | 'user';
 
 const iconByName: Record<IconName, ComponentType> = {
   dashboard: DashboardOutlined,
@@ -58,6 +59,7 @@ const iconByName: Record<IconName, ComponentType> = {
   outbound: ExportOutlined,
   routing: SwapOutlined,
   generator: ThunderboltOutlined,
+  user: UserOutlined,
 };
 
 function readCollapsed(): boolean {
@@ -135,6 +137,7 @@ export default function AppSidebar() {
     { key: '/xray', icon: 'tool', title: t('menu.xray') },
     { key: '/settings', icon: 'setting', title: t('menu.settings') },
     { key: '/client-generator', icon: 'generator', title: '客户端生成' },
+    { key: '/users', icon: 'user', title: '用户管理' },
     { key: LOGOUT_KEY, icon: 'logout', title: t('logout') },
   ], [t]);
 

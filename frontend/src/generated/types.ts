@@ -531,6 +531,28 @@ export interface PanelUpdateStatus {
   state: string;
 }
 
+export interface PanelUser {
+  clientLimit: number;
+  createdAt: number;
+  enable: boolean;
+  id: number;
+  inboundIds: number[];
+  updatedAt: number;
+  username: string;
+}
+
+export interface PortalClientView {
+  createdAt: number;
+  down: number;
+  email: string;
+  enable: boolean;
+  expiryTime: number;
+  inboundId: number;
+  inboundTag: string;
+  totalGB: number;
+  up: number;
+}
+
 export interface ProbeResultUI {
   cpuPct: number;
   error: string;
@@ -574,6 +596,14 @@ export interface Setting {
 export interface User {
   id: number;
   password: string;
+  username: string;
+}
+
+export interface UserStatus {
+  clientLimit: number;
+  id: number;
+  inboundIds: number[];
+  usedClients: number;
   username: string;
 }
 

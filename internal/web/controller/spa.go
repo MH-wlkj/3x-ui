@@ -59,6 +59,13 @@ func (a *XUIController) panelSPA(c *gin.Context) {
 	serveDistPage(c, "index.html")
 }
 
+// ServePortalSPA serves the React shell for the tenant portal at /panel/portal
+// without requiring an admin session. The portal page authenticates with its
+// own bearer token, so it must stay outside the checkLogin-protected group.
+func ServePortalSPA(c *gin.Context) {
+	serveDistPage(c, "index.html")
+}
+
 // HandleNoRoutePanelSPA serves the React shell for client-side routes that were
 // not explicitly registered in Gin. It intentionally runs from engine.NoRoute
 // instead of a /panel/*path wildcard so explicit JSON/API routes keep their
