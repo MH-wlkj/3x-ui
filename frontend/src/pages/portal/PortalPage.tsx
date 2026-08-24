@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Button,
@@ -77,7 +77,7 @@ const DEFAULT_GEN: GenValues = {
   totalGB: 0,
   expiryDays: 0,
   inboundId: 0,
-  namingMode: 'seq',
+  namingMode: 'ip',
   startNum: 1,
   padLength: 2,
   enableVision: true,
@@ -124,14 +124,13 @@ export default function PortalPage() {
   const [loginLoading, setLoginLoading] = useState(false);
 
   const [genValues, setGenValues] = useState<GenValues>(DEFAULT_GEN);
-  const [genNamingMode, setGenNamingMode] = useState<'ip' | 'seq'>('seq');
+  const [genNamingMode, setGenNamingMode] = useState<'ip' | 'seq'>('ip');
   const [nodeInput, setNodeInput] = useState('');
   const [parsedNodes, setParsedNodes] = useState<NodeLine[]>([]);
   const [previewEmails, setPreviewEmails] = useState<string[]>([]);
   const [previewOutbounds, setPreviewOutbounds] = useState<Record<string, unknown>[]>([]);
   const [previewRouting, setPreviewRouting] = useState<Record<string, unknown>[]>([]);
   const [creating, setCreating] = useState(false);
-  const prefilledRef = useRef(false);
 
   const [detailOpen, setDetailOpen] = useState(false);
   const [detailClient, setDetailClient] = useState<PortalClientView | null>(null);
@@ -165,10 +164,6 @@ export default function PortalPage() {
       setStatus(meMsg.obj ?? null);
       setInbounds(Array.isArray(inboundMsg.obj) ? inboundMsg.obj : []);
       setClients(Array.isArray(clientMsg.obj) ? clientMsg.obj : []);
-      if (meMsg.obj && !prefilledRef.current) {
-        prefilledRef.current = true;
-        setGenValues((v) => ({ ...v, totalGB: Math.round(meMsg.obj!.trafficLimit / SizeFormatter.ONE_GB) }));
-      }
     } finally {
       setLoading(false);
     }
