@@ -576,6 +576,20 @@ export const PanelUserSchema = z.object({
 });
 export type PanelUser = z.infer<typeof PanelUserSchema>;
 
+export const PanelUserViewSchema = z.object({
+  clientLimit: z.number().int(),
+  createdAt: z.number().int(),
+  enable: z.boolean(),
+  id: z.number().int(),
+  inboundIds: z.array(z.number().int()),
+  trafficLimit: z.number().int(),
+  updatedAt: z.number().int(),
+  usedClients: z.number().int(),
+  usedTraffic: z.number().int(),
+  username: z.string(),
+});
+export type PanelUserView = z.infer<typeof PanelUserViewSchema>;
+
 export const PortalClientLinksSchema = z.object({
   links: z.array(z.string()),
   subLink: z.string(),
@@ -652,6 +666,7 @@ export const UserStatusSchema = z.object({
   inboundIds: z.array(z.number().int()),
   trafficLimit: z.number().int(),
   usedClients: z.number().int(),
+  usedTraffic: z.number().int(),
   username: z.string(),
 });
 export type UserStatus = z.infer<typeof UserStatusSchema>;

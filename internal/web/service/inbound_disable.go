@@ -93,16 +93,27 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, error)
 	if err != nil {
 		return false, 0, err
 	}
-	if len(depletedRows) == 0 {
-		return false, 0, nil
-	}
-
 	depletedEmails := make([]string, 0, len(depletedRows))
 	for i := range depletedRows {
 		if depletedRows[i].Email == "" {
 			continue
 		}
 		depletedEmails = append(depletedEmails, depletedRows[i].Email)
+	}
+
+	// Portal tenants whose aggregate client traffic has reached their traffic
+	// limit get every remaining enabled client disabled too. These emails are
+	// merged into the same disable path below; they are flipped by email in
+	// client_traffics because they aren't among depletedRows.
+	quotaEmails, quotaCount, quotaErr := s.portalQuotaExhaustedEmails(tx)
+	if quotaErr != nil {
+		logger.Warning("disableInvalidClients: portal quota check:", quotaErr)
+	} else if quotaCount > 0 {
+		depletedEmails = append(depletedEmails, quotaEmails...)
+	}
+
+	if len(depletedEmails) == 0 {
+		return false, 0, nil
 	}
 
 	type target struct {
@@ -180,6 +191,24 @@ func (s *InboundService) disableInvalidClients(tx *gorm.DB) (bool, int64, error)
 			return needRestart, count, result.Error
 		}
 		count += result.RowsAffected
+	}
+
+	// Portal clients disabled by aggregate quota aren't in depletedRows, so
+	// flip their client_traffics rows by email.
+	if quotaCount > 0 {
+		for start := 0; start < len(quotaEmails); start += sqlInChunk {
+			end := start + sqlInChunk
+			if end > len(quotaEmails) {
+				end = len(quotaEmails)
+			}
+			result := tx.Model(xray.ClientTraffic{}).
+				Where("email IN ? AND enable = ?", quotaEmails[start:end], true).
+				Update("enable", false)
+			if result.Error != nil {
+				return needRestart, count, result.Error
+			}
+			count += result.RowsAffected
+		}
 	}
 
 	if len(depletedEmails) > 0 {
@@ -272,4 +301,39 @@ func (s *InboundService) disableRemoteClients(tx *gorm.DB, inboundID int, emails
 		return err
 	}
 	return nil
+}
+
+// portalQuotaExhaustedEmails returns the emails of still-enabled clients that
+// belong to portal tenants whose aggregate client traffic (up+down, summed
+// across the tenant's clients) has reached their traffic limit. The caller
+// merges the result into the depleted-client disable path so an exhausted
+// tenant's clients stop working together. Clients are attributed to a tenant
+// via the "portal:<id>" group tag on the clients row.
+func (s *InboundService) portalQuotaExhaustedEmails(tx *gorm.DB) ([]string, int, error) {
+	var users []model.PanelUser
+	if err := tx.Where("enable = ? AND traffic_limit > 0", true).Find(&users).Error; err != nil {
+		return nil, 0, err
+	}
+	var emails []string
+	for _, u := range users {
+		tag := fmt.Sprintf("portal:%d", u.Id)
+		var used int64
+		if err := tx.Model(&xray.ClientTraffic{}).
+			Joins("JOIN clients ON clients.email = client_traffics.email AND clients.group_name = ?", tag).
+			Select("COALESCE(SUM(client_traffics.up + client_traffics.down), 0)").
+			Scan(&used).Error; err != nil {
+			continue
+		}
+		if used < u.TrafficLimit {
+			continue
+		}
+		var userEmails []string
+		if err := tx.Model(&model.ClientRecord{}).
+			Where("group_name = ? AND enable = ?", tag, true).
+			Pluck("email", &userEmails).Error; err != nil {
+			continue
+		}
+		emails = append(emails, userEmails...)
+	}
+	return emails, len(emails), nil
 }

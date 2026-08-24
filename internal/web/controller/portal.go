@@ -48,11 +48,13 @@ type portalPasswordForm struct {
 // (under /portal/api, bearer-token protected).
 type PortalController struct {
 	BaseController
-	portalService  portal.PortalService
-	userService    panel.UserService
-	clientService  service.ClientService
-	inboundService service.InboundService
-	settingService service.SettingService
+	portalService     portal.PortalService
+	userService       panel.UserService
+	clientService     service.ClientService
+	inboundService    service.InboundService
+	settingService    service.SettingService
+	xraySettingService service.XraySettingService
+	xrayService       service.XrayService
 }
 
 func NewPortalController(g *gin.RouterGroup) *PortalController {
@@ -89,6 +91,7 @@ func (a *PortalController) initTokenRouter(g *gin.RouterGroup) {
 	g.GET("/clients", a.portalTokenAuth, a.portalListClients)
 	g.GET("/clients/links/:email", a.portalTokenAuth, a.portalClientLinks)
 	g.POST("/clients/delete", a.portalTokenAuth, a.portalDeleteClient)
+	g.POST("/xray/apply", a.portalTokenAuth, a.portalApplyXray)
 	g.POST("/password", a.portalTokenAuth, a.portalChangePassword)
 }
 
@@ -260,6 +263,20 @@ func (a *PortalController) portalDeleteClient(c *gin.Context) {
 	}
 	needRestart, err := a.portalService.DeleteClient(user, form.Email)
 	jsonObj(c, gin.H{"needRestart": needRestart}, err)
+}
+
+func (a *PortalController) portalApplyXray(c *gin.Context) {
+	user := a.portalUser(c)
+	form := &portal.PortalXrayApplyRequest{}
+	if err := c.ShouldBind(form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	if err := a.portalService.ApplyXray(user, form, &a.settingService, &a.xraySettingService, &a.xrayService); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	pureJsonMsg(c, http.StatusOK, true, "xray config updated")
 }
 
 func (a *PortalController) portalChangePassword(c *gin.Context) {

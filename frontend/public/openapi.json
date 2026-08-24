@@ -2369,6 +2369,61 @@
         ],
         "type": "object"
       },
+      "PanelUserView": {
+        "description": "PanelUserView augments a tenant account with live usage for the admin list.",
+        "properties": {
+          "clientLimit": {
+            "type": "integer"
+          },
+          "createdAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "enable": {
+            "type": "boolean"
+          },
+          "id": {
+            "type": "integer"
+          },
+          "inboundIds": {
+            "items": {
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "trafficLimit": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "updatedAt": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "usedClients": {
+            "type": "integer"
+          },
+          "usedTraffic": {
+            "format": "int64",
+            "type": "integer"
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "clientLimit",
+          "createdAt",
+          "enable",
+          "id",
+          "inboundIds",
+          "trafficLimit",
+          "updatedAt",
+          "usedClients",
+          "usedTraffic",
+          "username"
+        ],
+        "type": "object"
+      },
       "PortalClientLinks": {
         "description": "PortalClientLinks holds the share links and subscription link for one of the\ntenant's clients, used to render QR codes.",
         "properties": {
@@ -2657,6 +2712,10 @@
           "usedClients": {
             "type": "integer"
           },
+          "usedTraffic": {
+            "format": "int64",
+            "type": "integer"
+          },
           "username": {
             "type": "string"
           }
@@ -2667,6 +2726,7 @@
           "inboundIds",
           "trafficLimit",
           "usedClients",
+          "usedTraffic",
           "username"
         ],
         "type": "object"
@@ -11053,7 +11113,7 @@
         "tags": [
           "Tenant Portal (User Management)"
         ],
-        "summary": "List all tenant accounts.",
+        "summary": "List all tenant accounts with live client and traffic usage.",
         "operationId": "get_panel_api_portal_users",
         "responses": {
           "200": {
@@ -11072,7 +11132,7 @@
                     "obj": {
                       "type": "array",
                       "items": {
-                        "$ref": "#/components/schemas/PanelUser"
+                        "$ref": "#/components/schemas/PanelUserView"
                       }
                     }
                   }
@@ -11090,6 +11150,8 @@
                       ],
                       "trafficLimit": 0,
                       "updatedAt": 0,
+                      "usedClients": 0,
+                      "usedTraffic": 0,
                       "username": ""
                     }
                   ]
@@ -11373,6 +11435,7 @@
                     ],
                     "trafficLimit": 0,
                     "usedClients": 0,
+                    "usedTraffic": 0,
                     "username": ""
                   }
                 }
@@ -11676,6 +11739,81 @@
                     },
                     "obj": {}
                   }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/xray/apply": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Merge the tenant’s generated outbound and routing rules into the panel Xray config (routing may only target the tenant’s own clients) and hot-reload. Requires Bearer token.",
+        "operationId": "post_portal_api_xray_apply",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "outbounds": [
+                  {
+                    "tag": "user-001",
+                    "protocol": "socks",
+                    "settings": {
+                      "servers": [
+                        {
+                          "address": "1.2.3.4",
+                          "port": 7176,
+                          "users": [
+                            {
+                              "user": "u",
+                              "pass": "p"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "routing": [
+                  {
+                    "type": "field",
+                    "user": [
+                      "user-001"
+                    ],
+                    "outboundTag": "user-001"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "msg": "xray config updated"
                 }
               }
             }

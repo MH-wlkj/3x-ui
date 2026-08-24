@@ -1531,9 +1531,9 @@ export const sections: readonly Section[] = [
       {
         method: 'GET',
         path: '/panel/api/portal/users',
-        summary: 'List all tenant accounts.',
+        summary: 'List all tenant accounts with live client and traffic usage.',
         responseSchemaArray: true,
-        responseSchema: 'PanelUser',
+        responseSchema: 'PanelUserView',
       },
       {
         method: 'POST',
@@ -1645,6 +1645,17 @@ export const sections: readonly Section[] = [
         summary: 'Delete one of the tenant\u2019s own clients by email. Requires Bearer token.',
         params: [{ name: 'email', in: 'body (json)', type: 'string', desc: 'Client email to delete.' }],
         body: '{\n  "email": "user-001"\n}',
+      },
+      {
+        method: 'POST',
+        path: '/portal/api/xray/apply',
+        summary: 'Merge the tenant\u2019s generated outbound and routing rules into the panel Xray config (routing may only target the tenant\u2019s own clients) and hot-reload. Requires Bearer token.',
+        params: [
+          { name: 'outbounds', in: 'body (json)', type: 'object[]', desc: 'Outbound objects, each with a unique tag (e.g. SOCKS/HTTP to the tenant\u2019s upstream node).' },
+          { name: 'routing', in: 'body (json)', type: 'object[]', desc: 'Routing field rules whose user list must contain only the tenant\u2019s own client emails.' },
+        ],
+        body: '{\n  "outbounds": [\n    { "tag": "user-001", "protocol": "socks", "settings": { "servers": [ { "address": "1.2.3.4", "port": 7176, "users": [ { "user": "u", "pass": "p" } ] } ] } }\n  ],\n  "routing": [\n    { "type": "field", "user": ["user-001"], "outboundTag": "user-001" }\n  ]\n}',
+        response: '{\n  "success": true,\n  "msg": "xray config updated"\n}',
       },
       {
         method: 'POST',

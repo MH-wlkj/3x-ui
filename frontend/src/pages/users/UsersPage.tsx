@@ -8,6 +8,7 @@ import {
   InputNumber,
   Layout,
   Modal,
+  Progress,
   Select,
   Space,
   Switch,
@@ -31,7 +32,7 @@ import { HttpUtil, SizeFormatter } from '@/utils';
 import { setMessageInstance } from '@/utils/messageBus';
 import AppSidebar from '@/layouts/AppSidebar';
 import { type InboundOption } from '@/schemas/client';
-import { type PanelUser } from '@/generated/types';
+import { type PanelUserView } from '@/generated/types';
 import '@/styles/page-shell.css';
 import '@/styles/page-cards.css';
 import '@/styles/utils.css';
@@ -49,8 +50,8 @@ interface UserFormValues {
   enable: boolean;
 }
 
-async function fetchUsers(): Promise<PanelUser[]> {
-  const msg = await HttpUtil.get<PanelUser[]>('/panel/api/portal/users', undefined, { silent: true });
+async function fetchUsers(): Promise<PanelUserView[]> {
+  const msg = await HttpUtil.get<PanelUserView[]>('/panel/api/portal/users', undefined, { silent: true });
   return msg?.success && Array.isArray(msg.obj) ? msg.obj : [];
 }
 
@@ -60,11 +61,11 @@ export default function UsersPage() {
   const [messageApi, messageContextHolder] = message.useMessage();
   useEffect(() => { setMessageInstance(messageApi); }, [messageApi]);
 
-  const [users, setUsers] = useState<PanelUser[]>([]);
+  const [users, setUsers] = useState<PanelUserView[]>([]);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState<PanelUser | null>(null);
+  const [editing, setEditing] = useState<PanelUserView | null>(null);
   const [form] = Form.useForm<UserFormValues>();
   const { data: inbounds, isLoading: inboundsLoading } = useInboundOptions();
 
@@ -96,7 +97,7 @@ export default function UsersPage() {
     setModalOpen(true);
   };
 
-  const openEdit = useCallback((user: PanelUser) => {
+  const openEdit = useCallback((user: PanelUserView) => {
     setEditing(user);
     form.resetFields();
     form.setFieldsValue({
@@ -134,7 +135,7 @@ export default function UsersPage() {
     }
   };
 
-  const remove = useCallback((user: PanelUser) => {
+  const remove = useCallback((user: PanelUserView) => {
     Modal.confirm({
       title: `删除用户 ${user.username}？`,
       content: '该用户的授权会被移除，但已创建的客户端不会受影响。',
@@ -153,7 +154,7 @@ export default function UsersPage() {
     });
   }, [loadUsers, messageApi]);
 
-  const columns: TableColumnsType<PanelUser> = useMemo(() => [
+  const columns: TableColumnsType<PanelUserView> = useMemo(() => [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 60, align: 'right' },
     {
       title: '用户名',
@@ -189,11 +190,27 @@ export default function UsersPage() {
       render: (v: number) => (v > 0 ? `${v} 个` : '不限'),
     },
     {
-      title: '流量限制',
-      dataIndex: 'trafficLimit',
-      key: 'trafficLimit',
-      width: 110,
-      render: (v: number) => (v > 0 ? `${Math.round(v / SizeFormatter.ONE_GB)} GB` : '不限'),
+      title: '流量使用 (总/已用/剩余)',
+      key: 'traffic',
+      width: 260,
+      render: (_v, r) => {
+        if (r.trafficLimit <= 0) return <Tag>不限</Tag>;
+        const used = r.usedTraffic || 0;
+        const total = r.trafficLimit;
+        const remaining = Math.max(0, total - used);
+        return (
+          <Space direction="vertical" size={0} style={{ width: '100%' }}>
+            <Text style={{ fontSize: 12 }}>
+              总 {SizeFormatter.sizeFormat(total)} · 已用 {SizeFormatter.sizeFormat(used)} · 剩余 {SizeFormatter.sizeFormat(remaining)}
+            </Text>
+            <Progress
+              percent={Math.min(100, Math.round((used / total) * 100))}
+              size="small"
+              status={used >= total ? 'exception' : 'active'}
+            />
+          </Space>
+        );
+      },
     },
     {
       title: '启用',
@@ -246,7 +263,7 @@ export default function UsersPage() {
                   添加用户
                 </Button>
               </div>
-              <Table<PanelUser>
+              <Table<PanelUserView>
                 rowKey="id"
                 columns={columns}
                 dataSource={users}

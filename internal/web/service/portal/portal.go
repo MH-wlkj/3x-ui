@@ -8,6 +8,7 @@ package portal
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,6 +19,7 @@ import (
 	"github.com/mhsanaei/3x-ui/v3/internal/util/common"
 	"github.com/mhsanaei/3x-ui/v3/internal/util/crypto"
 	"github.com/mhsanaei/3x-ui/v3/internal/web/service"
+	"github.com/mhsanaei/3x-ui/v3/internal/xray"
 )
 
 // PortalService groups all portal operations. It is stateless apart from the
@@ -50,13 +52,45 @@ func randomToken() string {
 
 // ---- admin: user management ----
 
-// ListUsers returns all tenant accounts ordered by id.
-func (s *PortalService) ListUsers() ([]model.PanelUser, error) {
+// PanelUserView augments a tenant account with live usage for the admin list.
+type PanelUserView struct {
+	Id           int    `json:"id"`
+	Username     string `json:"username"`
+	InboundIds   []int  `json:"inboundIds"`
+	ClientLimit  int    `json:"clientLimit"`
+	TrafficLimit int64  `json:"trafficLimit"`
+	Enable       bool   `json:"enable"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
+	UsedClients  int    `json:"usedClients"`
+	UsedTraffic  int64  `json:"usedTraffic"`
+}
+
+// ListUsers returns all tenant accounts ordered by id with live usage.
+func (s *PortalService) ListUsers() ([]PanelUserView, error) {
 	var users []model.PanelUser
 	if err := database.GetDB().Order("id ASC").Find(&users).Error; err != nil {
 		return nil, err
 	}
-	return users, nil
+	views := make([]PanelUserView, 0, len(users))
+	for i := range users {
+		u := &users[i]
+		used, _ := s.countClients(u)
+		usedTraffic, _ := s.countUsedTraffic(u)
+		views = append(views, PanelUserView{
+			Id:           u.Id,
+			Username:     u.Username,
+			InboundIds:   u.InboundIds,
+			ClientLimit:  u.ClientLimit,
+			TrafficLimit: u.TrafficLimit,
+			Enable:       u.Enable,
+			CreatedAt:    u.CreatedAt,
+			UpdatedAt:    u.UpdatedAt,
+			UsedClients:  used,
+			UsedTraffic:  usedTraffic,
+		})
+	}
+	return views, nil
 }
 
 // CreateUser persists a new tenant account. An empty password is rejected; the
@@ -178,11 +212,17 @@ type UserStatus struct {
 	ClientLimit  int    `json:"clientLimit"`
 	TrafficLimit int64  `json:"trafficLimit"`
 	UsedClients  int    `json:"usedClients"`
+	UsedTraffic  int64  `json:"usedTraffic"`
 }
 
-// UserStatus reports how many of the tenant's allowed client slots are used.
+// UserStatus reports how many of the tenant's allowed client slots are used
+// and how much aggregate traffic their clients have consumed.
 func (s *PortalService) UserStatus(user *model.PanelUser) (*UserStatus, error) {
 	used, err := s.countClients(user)
+	if err != nil {
+		return nil, err
+	}
+	usedTraffic, err := s.countUsedTraffic(user)
 	if err != nil {
 		return nil, err
 	}
@@ -193,7 +233,19 @@ func (s *PortalService) UserStatus(user *model.PanelUser) (*UserStatus, error) {
 		ClientLimit:  user.ClientLimit,
 		TrafficLimit: user.TrafficLimit,
 		UsedClients:  used,
+		UsedTraffic:  usedTraffic,
 	}, nil
+}
+
+// countUsedTraffic sums up+down across the tenant's own clients.
+func (s *PortalService) countUsedTraffic(user *model.PanelUser) (int64, error) {
+	tag := groupTag(user.Id)
+	var used int64
+	err := database.GetDB().Model(&xray.ClientTraffic{}).
+		Joins("JOIN clients ON clients.email = client_traffics.email AND clients.group_name = ?", tag).
+		Select("COALESCE(SUM(client_traffics.up + client_traffics.down), 0)").
+		Scan(&used).Error
+	return used, err
 }
 
 // AllowedInbounds returns the subset of inbound options the tenant may target.
@@ -496,4 +548,123 @@ func (s *PortalService) applyTrafficLimit(user *model.PanelUser, totalGB int64) 
 		return user.TrafficLimit
 	}
 	return totalGB
+}
+
+// PortalXrayApplyRequest carries generated outbound and routing rules to merge
+// into the panel's Xray config. Routing rules may only reference the tenant's
+// own client emails, so a tenant can never capture another tenant's traffic.
+type PortalXrayApplyRequest struct {
+	Outbounds []map[string]any `json:"outbounds"`
+	Routing   []map[string]any `json:"routing"`
+}
+
+// ApplyXray merges the tenant's generated outbounds and routing rules into the
+// panel's Xray config and hot-reloads the running core. Routing rules are
+// validated so they can only target the tenant's own clients.
+func (s *PortalService) ApplyXray(user *model.PanelUser, req *PortalXrayApplyRequest, settingSvc *service.SettingService, xraySettingSvc *service.XraySettingService, xraySvc *service.XrayService) error {
+	if len(req.Outbounds) == 0 && len(req.Routing) == 0 {
+		return common.NewError("nothing to apply")
+	}
+	allowed, err := s.ownClientEmails(user)
+	if err != nil {
+		return err
+	}
+	for _, rule := range req.Routing {
+		users, ok := rule["user"].([]any)
+		if !ok || len(users) == 0 {
+			return common.NewError("routing rule must carry a user list")
+		}
+		for _, u := range users {
+			email, _ := u.(string)
+			if !allowed[email] {
+				return common.NewError("routing rule references a client that is not yours")
+			}
+		}
+		if _, ok := rule["outboundTag"].(string); !ok {
+			return common.NewError("routing rule must carry an outboundTag")
+		}
+	}
+	cfgStr, err := settingSvc.GetXrayConfigTemplate()
+	if err != nil {
+		return err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(cfgStr), &cfg); err != nil {
+		return err
+	}
+	outbounds, _ := cfg["outbounds"].([]any)
+	rules, _ := cfg["routing"].(map[string]any)
+	ruleList, _ := rules["rules"].([]any)
+
+	existingTags := map[string]bool{}
+	for _, ob := range outbounds {
+		if m, ok := ob.(map[string]any); ok {
+			if t, _ := m["tag"].(string); t != "" {
+				existingTags[t] = true
+			}
+		}
+	}
+	added := 0
+	for _, ob := range req.Outbounds {
+		tag, _ := ob["tag"].(string)
+		if tag == "" || existingTags[tag] {
+			continue
+		}
+		outbounds = append(outbounds, ob)
+		existingTags[tag] = true
+		added++
+	}
+	existingRuleTags := map[string]bool{}
+	for _, r := range ruleList {
+		if m, ok := r.(map[string]any); ok {
+			if t, _ := m["outboundTag"].(string); t != "" {
+				existingRuleTags[t] = true
+			}
+		}
+	}
+	addedRules := 0
+	for _, rule := range req.Routing {
+		tag, _ := rule["outboundTag"].(string)
+		if tag == "" || existingRuleTags[tag] {
+			continue
+		}
+		ruleList = append(ruleList, rule)
+		existingRuleTags[tag] = true
+		addedRules++
+	}
+	if rules == nil {
+		rules = map[string]any{}
+	}
+	rules["rules"] = ruleList
+	cfg["outbounds"] = outbounds
+	cfg["routing"] = rules
+	merged, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := xraySettingSvc.SaveXraySetting(string(merged)); err != nil {
+		return err
+	}
+	if xraySvc.IsXrayRunning() {
+		if err := xraySvc.RestartXray(false); err != nil {
+			return err
+		}
+	}
+	_ = added
+	_ = addedRules
+	return nil
+}
+
+// ownClientEmails returns the set of client emails that belong to the tenant.
+func (s *PortalService) ownClientEmails(user *model.PanelUser) (map[string]bool, error) {
+	tag := groupTag(user.Id)
+	var emails []string
+	if err := database.GetDB().Model(&model.ClientRecord{}).Where("group_name = ?", tag).Pluck("email", &emails).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(emails))
+	for _, e := range emails {
+		out[e] = true
+	}
+	return out, nil
 }

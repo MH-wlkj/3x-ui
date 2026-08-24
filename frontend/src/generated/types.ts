@@ -542,6 +542,19 @@ export interface PanelUser {
   username: string;
 }
 
+export interface PanelUserView {
+  clientLimit: number;
+  createdAt: number;
+  enable: boolean;
+  id: number;
+  inboundIds: number[];
+  trafficLimit: number;
+  updatedAt: number;
+  usedClients: number;
+  usedTraffic: number;
+  username: string;
+}
+
 export interface PortalClientLinks {
   links: string[];
   subLink: string;
@@ -612,6 +625,7 @@ export interface UserStatus {
   inboundIds: number[];
   trafficLimit: number;
   usedClients: number;
+  usedTraffic: number;
   username: string;
 }
 

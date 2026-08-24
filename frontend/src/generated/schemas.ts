@@ -2343,6 +2343,61 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "PanelUserView": {
+    "description": "PanelUserView augments a tenant account with live usage for the admin list.",
+    "properties": {
+      "clientLimit": {
+        "type": "integer"
+      },
+      "createdAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "enable": {
+        "type": "boolean"
+      },
+      "id": {
+        "type": "integer"
+      },
+      "inboundIds": {
+        "items": {
+          "type": "integer"
+        },
+        "type": "array"
+      },
+      "trafficLimit": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "updatedAt": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "usedClients": {
+        "type": "integer"
+      },
+      "usedTraffic": {
+        "format": "int64",
+        "type": "integer"
+      },
+      "username": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "clientLimit",
+      "createdAt",
+      "enable",
+      "id",
+      "inboundIds",
+      "trafficLimit",
+      "updatedAt",
+      "usedClients",
+      "usedTraffic",
+      "username"
+    ],
+    "type": "object"
+  },
   "PortalClientLinks": {
     "description": "PortalClientLinks holds the share links and subscription link for one of the\ntenant's clients, used to render QR codes.",
     "properties": {
@@ -2631,6 +2686,10 @@ export const SCHEMAS: Record<string, unknown> = {
       "usedClients": {
         "type": "integer"
       },
+      "usedTraffic": {
+        "format": "int64",
+        "type": "integer"
+      },
       "username": {
         "type": "string"
       }
@@ -2641,6 +2700,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "inboundIds",
       "trafficLimit",
       "usedClients",
+      "usedTraffic",
       "username"
     ],
     "type": "object"

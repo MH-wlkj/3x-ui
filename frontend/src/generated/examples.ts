@@ -559,6 +559,20 @@ export const EXAMPLES: Record<string, unknown> = {
     "updatedAt": 0,
     "username": ""
   },
+  "PanelUserView": {
+    "clientLimit": 0,
+    "createdAt": 0,
+    "enable": false,
+    "id": 0,
+    "inboundIds": [
+      0
+    ],
+    "trafficLimit": 0,
+    "updatedAt": 0,
+    "usedClients": 0,
+    "usedTraffic": 0,
+    "username": ""
+  },
   "PortalClientLinks": {
     "links": [
       ""
@@ -629,6 +643,7 @@ export const EXAMPLES: Record<string, unknown> = {
     ],
     "trafficLimit": 0,
     "usedClients": 0,
+    "usedTraffic": 0,
     "username": ""
   }
 };

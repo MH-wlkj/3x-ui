@@ -6,11 +6,13 @@ import {
   Col,
   Collapse,
   ConfigProvider,
+  Descriptions,
   Form,
   Input,
   InputNumber,
   Layout,
   Modal,
+  Progress,
   Row,
   Select,
   Space,
@@ -66,6 +68,7 @@ interface GenValues {
   startNum: number;
   padLength: number;
   enableVision: boolean;
+  outboundProtocol: 'socks' | 'http';
 }
 
 const DEFAULT_GEN: GenValues = {
@@ -78,6 +81,7 @@ const DEFAULT_GEN: GenValues = {
   startNum: 1,
   padLength: 2,
   enableVision: true,
+  outboundProtocol: 'socks',
 };
 
 function parseNodes(text: string): NodeLine[] {
@@ -124,11 +128,13 @@ export default function PortalPage() {
   const [nodeInput, setNodeInput] = useState('');
   const [parsedNodes, setParsedNodes] = useState<NodeLine[]>([]);
   const [previewEmails, setPreviewEmails] = useState<string[]>([]);
+  const [previewOutbounds, setPreviewOutbounds] = useState<Record<string, unknown>[]>([]);
+  const [previewRouting, setPreviewRouting] = useState<Record<string, unknown>[]>([]);
   const [creating, setCreating] = useState(false);
   const prefilledRef = useRef(false);
 
-  const [qrOpen, setQrOpen] = useState(false);
-  const [qrClient, setQrClient] = useState<PortalClientView | null>(null);
+  const [detailOpen, setDetailOpen] = useState(false);
+  const [detailClient, setDetailClient] = useState<PortalClientView | null>(null);
   const [qrLinks, setQrLinks] = useState<PortalClientLinks | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
 
@@ -210,6 +216,8 @@ export default function PortalPage() {
       return;
     }
     const emails: string[] = [];
+    const outbounds: Record<string, unknown>[] = [];
+    const routing: Record<string, unknown>[] = [];
     let currentNum = genValues.startNum;
     for (const node of parsedNodes) {
       let email: string;
@@ -224,9 +232,19 @@ export default function PortalPage() {
         email = `${genValues.emailPrefix}${node.ip}${genValues.emailSuffix}`;
       }
       emails.push(email);
+      outbounds.push({
+        tag: email,
+        protocol: genValues.outboundProtocol,
+        settings: {
+          servers: [{ address: node.ip, port: node.port, users: [{ user: node.user, pass: node.pass }] }],
+        },
+      });
+      routing.push({ type: 'field', user: [email], outboundTag: email });
     }
     setPreviewEmails(emails);
-    messageApi.success(`✅ 已生成 ${emails.length} 个客户端预览`);
+    setPreviewOutbounds(outbounds);
+    setPreviewRouting(routing);
+    messageApi.success(`✅ 已生成 ${emails.length} 个客户端（含 ${outbounds.length} 出站 / ${routing.length} 路由规则）`);
   };
 
   const onCreate = async () => {
@@ -258,8 +276,18 @@ export default function PortalPage() {
       );
       if (msg?.success) {
         const created = msg.obj?.created?.created ?? previewEmails.length;
-        messageApi.success(`✅ 已创建 ${created} 个客户端`);
+        let applied = false;
+        if (previewOutbounds.length > 0 || previewRouting.length > 0) {
+          const applyMsg = await HttpUtil.post('/portal/api/xray/apply', { outbounds: previewOutbounds, routing: previewRouting }, authHeaders(JSON_HEADERS.headers));
+          applied = !!applyMsg?.success;
+          if (!applied) messageApi.warning(`出站/路由应用失败：${applyMsg?.msg || '未知错误'}`);
+        }
+        messageApi.success(
+          `✅ 已创建 ${created} 个客户端${previewOutbounds.length > 0 ? (applied ? '，并应用出站/路由规则' : '，但出站/路由未应用') : ''}`,
+        );
         setPreviewEmails([]);
+        setPreviewOutbounds([]);
+        setPreviewRouting([]);
         void loadAll();
       } else {
         messageApi.error(msg?.msg || '创建失败');
@@ -269,9 +297,9 @@ export default function PortalPage() {
     }
   };
 
-  const openQr = useCallback(async (row: PortalClientView) => {
-    setQrClient(row);
-    setQrOpen(true);
+  const openDetail = useCallback(async (row: PortalClientView) => {
+    setDetailClient(row);
+    setDetailOpen(true);
     setQrLinks(null);
     setQrLoading(true);
     try {
@@ -345,13 +373,20 @@ export default function PortalPage() {
       render: (id: number) => <Tag color="geekblue" style={{ fontSize: 11 }}>{inboundLabel(id)}</Tag>,
     },
     {
-      title: '流量',
+      title: '已用流量',
       key: 'traffic',
       render: (_v, r) => {
         const up = SizeFormatter.sizeFormat(r.up || 0);
         const down = SizeFormatter.sizeFormat(r.down || 0);
         return <Text style={{ fontSize: 12 }}>{up}↑ {down}↓</Text>;
       },
+    },
+    {
+      title: '流量限制',
+      dataIndex: 'totalGB',
+      key: 'totalGB',
+      width: 90,
+      render: (v: number) => (v > 0 ? SizeFormatter.sizeFormat(v) : <Tag>不限</Tag>),
     },
     {
       title: '到期',
@@ -370,15 +405,15 @@ export default function PortalPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 170,
+      width: 150,
       render: (_v, r) => (
         <Space>
-          <Button size="small" icon={<QrcodeOutlined />} onClick={() => void openQr(r)}>二维码</Button>
+          <Button size="small" icon={<QrcodeOutlined />} onClick={() => void openDetail(r)}>详情</Button>
           <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteClient(r)}>删除</Button>
         </Space>
       ),
     },
-  ], [inboundLabel, deleteClient, openQr]);
+  ], [inboundLabel, deleteClient, openDetail]);
 
   const pageClass = useMemo(() => {
     const classes = ['portal-page'];
@@ -432,7 +467,7 @@ export default function PortalPage() {
 
             {status && (
               <Card size="small" style={{ marginBottom: 16 }}>
-                <Space wrap size="large">
+                <Space wrap size="large" align="start">
                   <Text strong>账号：{status.username}</Text>
                   <Text>
                     已用客户端：<Text strong>{status.usedClients}</Text>
@@ -441,8 +476,26 @@ export default function PortalPage() {
                   {remaining !== null && (
                     <Tag color={remaining === 0 ? 'red' : 'green'}>剩余可添加：{remaining} 个</Tag>
                   )}
-                  <Text type="secondary">可用入站：{inbounds.length} 个</Text>
+                  <Text>可用入站：{inbounds.length} 个</Text>
                 </Space>
+                {status.trafficLimit > 0 ? (
+                  <div style={{ marginTop: 10, maxWidth: 480 }}>
+                    <Text style={{ fontSize: 12 }}>
+                      总流量 {SizeFormatter.sizeFormat(status.trafficLimit)} · 已用 {SizeFormatter.sizeFormat(status.usedTraffic || 0)} · 剩余 {SizeFormatter.sizeFormat(Math.max(0, status.trafficLimit - (status.usedTraffic || 0)))}
+                      {status.usedTraffic >= status.trafficLimit && (
+                        <Tag color="red" style={{ marginLeft: 8 }}>流量已用完，客户端已停用</Tag>
+                      )}
+                    </Text>
+                    <Progress
+                      percent={Math.min(100, Math.round((status.usedTraffic || 0) / status.trafficLimit * 100))}
+                      size="small"
+                      status={status.usedTraffic >= status.trafficLimit ? 'exception' : 'active'}
+                      style={{ marginTop: 4 }}
+                    />
+                  </div>
+                ) : (
+                  <Text style={{ display: 'block', marginTop: 8 }} type="secondary">流量限制：不限</Text>
+                )}
               </Card>
             )}
 
@@ -493,6 +546,19 @@ export default function PortalPage() {
                       onChange={(v) => setGenValues((prev) => ({ ...prev, inboundId: v }))}
                       options={inbounds.map((ib) => ({ value: ib.id, label: inboundLabel(ib.id) }))}
                       showSearch={{ optionFilterProp: 'label' }}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="出站协议" style={{ marginBottom: 0 }}>
+                    <Select
+                      style={{ width: '100%' }}
+                      value={genValues.outboundProtocol}
+                      onChange={(v) => setGenValues((prev) => ({ ...prev, outboundProtocol: v }))}
+                      options={[
+                        { value: 'socks', label: 'SOCKS5' },
+                        { value: 'http', label: 'HTTP' },
+                      ]}
                     />
                   </Form.Item>
                 </Col>
@@ -579,6 +645,11 @@ export default function PortalPage() {
                   <Space wrap size={4} style={{ marginTop: 8 }}>
                     {previewEmails.map((email) => <Tag key={email} color="blue">{email}</Tag>)}
                   </Space>
+                  <div style={{ marginTop: 8 }}>
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      将同时应用 {previewOutbounds.length} 个出站 / {previewRouting.length} 条路由规则（仅路由到你的客户端）
+                    </Text>
+                  </div>
                 </div>
               )}
               {remaining !== null && remaining === 0 && (
@@ -603,46 +674,82 @@ export default function PortalPage() {
       </Layout>
 
       <Modal
-        title={`二维码 / 链接 — ${qrClient?.email || ''}`}
-        open={qrOpen}
-        onCancel={() => setQrOpen(false)}
-        footer={<Button onClick={() => setQrOpen(false)}>关闭</Button>}
+        title={`客户端详情 — ${detailClient?.email || ''}`}
+        open={detailOpen}
+        onCancel={() => setDetailOpen(false)}
+        footer={<Button onClick={() => setDetailOpen(false)}>关闭</Button>}
+        width={560}
         destroyOnHidden
       >
-        {qrLoading ? (
-          <div style={{ textAlign: 'center', padding: 24 }}>
-            <Spin />
-          </div>
-        ) : qrLinks && (qrLinks.links.length > 0 || qrLinks.subLink) ? (
-          <Collapse
-            defaultActiveKey={qrLinks.subLink ? ['sub'] : qrLinks.links.length > 0 ? ['l0'] : []}
-            items={[
-              ...(qrLinks.subLink
-                ? [{
-                    key: 'sub',
-                    label: '订阅链接',
-                    children: (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                        <QrPanel value={qrLinks.subLink} remark={`${qrClient?.email || ''} — 订阅`} size={200} />
-                        <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{qrLinks.subLink}</Text>
-                      </div>
-                    ),
-                  }]
-                : []),
-              ...qrLinks.links.map((link, idx) => ({
-                key: `l${idx}`,
-                label: `分享链接 ${idx + 1}`,
-                children: (
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
-                    <QrPanel value={link} remark={`${qrClient?.email || ''} #${idx + 1}`} size={200} />
-                    <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{link}</Text>
+        {detailClient && (
+          <>
+            <Descriptions column={1} size="small" bordered>
+              <Descriptions.Item label="邮箱">{detailClient.email}</Descriptions.Item>
+              <Descriptions.Item label="入站">{inboundLabel(detailClient.inboundId)}</Descriptions.Item>
+              <Descriptions.Item label="状态">
+                {detailClient.enable ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>}
+              </Descriptions.Item>
+              <Descriptions.Item label="已用流量">
+                {SizeFormatter.sizeFormat(detailClient.up || 0)} ↑ / {SizeFormatter.sizeFormat(detailClient.down || 0)} ↓
+              </Descriptions.Item>
+              <Descriptions.Item label="流量限制">
+                {detailClient.totalGB > 0 ? SizeFormatter.sizeFormat(detailClient.totalGB) : '不限'}
+                {detailClient.totalGB > 0 && (
+                  <Progress
+                    percent={Math.min(100, Math.round(((detailClient.up || 0) + (detailClient.down || 0)) / detailClient.totalGB * 100))}
+                    size="small"
+                    style={{ marginTop: 6 }}
+                  />
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label="到期时间">
+                {detailClient.expiryTime > 0 ? new Date(detailClient.expiryTime).toLocaleString() : '永久'}
+              </Descriptions.Item>
+              <Descriptions.Item label="创建时间">
+                {detailClient.createdAt > 0 ? new Date(detailClient.createdAt).toLocaleString() : '—'}
+              </Descriptions.Item>
+            </Descriptions>
+            <div style={{ marginTop: 16 }}>
+              <Text strong>二维码 / 链接</Text>
+              <div style={{ marginTop: 8 }}>
+                {qrLoading ? (
+                  <div style={{ textAlign: 'center', padding: 24 }}>
+                    <Spin />
                   </div>
-                ),
-              })),
-            ]}
-          />
-        ) : (
-          <Alert type="info" showIcon message="该客户端暂无可用链接（可能订阅未开启或入站不支持分享链接）。" />
+                ) : qrLinks && (qrLinks.links.length > 0 || qrLinks.subLink) ? (
+                  <Collapse
+                    defaultActiveKey={qrLinks.subLink ? ['sub'] : qrLinks.links.length > 0 ? ['l0'] : []}
+                    items={[
+                      ...(qrLinks.subLink
+                        ? [{
+                            key: 'sub',
+                            label: '订阅链接',
+                            children: (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                                <QrPanel value={qrLinks.subLink} remark={`${detailClient?.email || ''} — 订阅`} size={200} />
+                                <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{qrLinks.subLink}</Text>
+                              </div>
+                            ),
+                          }]
+                        : []),
+                      ...qrLinks.links.map((link, idx) => ({
+                        key: `l${idx}`,
+                        label: `分享链接 ${idx + 1}`,
+                        children: (
+                          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                            <QrPanel value={link} remark={`${detailClient?.email || ''} #${idx + 1}`} size={200} />
+                            <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{link}</Text>
+                          </div>
+                        ),
+                      })),
+                    ]}
+                  />
+                ) : (
+                  <Alert type="info" showIcon message="该客户端暂无可用链接（可能订阅未开启或入站不支持分享链接）。" />
+                )}
+              </div>
+            </div>
+          </>
         )}
       </Modal>
 
