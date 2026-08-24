@@ -1,16 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Alert,
   Button,
   Card,
+  Col,
+  Collapse,
   ConfigProvider,
   Form,
   Input,
   InputNumber,
   Layout,
   Modal,
+  Row,
   Select,
   Space,
+  Spin,
+  Switch,
   Table,
   Tag,
   Typography,
@@ -21,30 +26,85 @@ import {
   DeleteOutlined,
   KeyOutlined,
   LogoutOutlined,
-  PlusOutlined,
+  QrcodeOutlined,
   ReloadOutlined,
+  SendOutlined,
   ThunderboltOutlined,
 } from '@ant-design/icons';
 
 import { useTheme } from '@/hooks/useTheme';
 import { HttpUtil, SizeFormatter } from '@/utils';
 import { setMessageInstance } from '@/utils/messageBus';
+import { QrPanel } from '@/pages/inbounds/qr';
 import type { InboundOption } from '@/schemas/client';
-import type { PortalClientView, UserStatus } from '@/generated/types';
+import type { PortalClientLinks, PortalClientView, UserStatus } from '@/generated/types';
 import '@/styles/page-shell.css';
 import '@/styles/page-cards.css';
 import '@/styles/utils.css';
 
 const { Title, Text } = Typography;
+const { TextArea } = Input;
 const JSON_HEADERS = { headers: { 'Content-Type': 'application/json' } } as const;
 const TOKEN_KEY = 'portal_token';
 const DAY_MS = 86400000;
 
-interface CreateFormValues {
-  inboundId: number;
-  email: string;
+interface NodeLine {
+  ip: string;
+  port: number;
+  user: string;
+  pass: string;
+  customPrefix?: string;
+}
+
+interface GenValues {
+  emailPrefix: string;
+  emailSuffix: string;
   totalGB: number;
   expiryDays: number;
+  inboundId: number;
+  namingMode: 'ip' | 'seq';
+  startNum: number;
+  padLength: number;
+  enableVision: boolean;
+}
+
+const DEFAULT_GEN: GenValues = {
+  emailPrefix: 'user-',
+  emailSuffix: '',
+  totalGB: 0,
+  expiryDays: 0,
+  inboundId: 0,
+  namingMode: 'seq',
+  startNum: 1,
+  padLength: 2,
+  enableVision: true,
+};
+
+function parseNodes(text: string): NodeLine[] {
+  const lines = text.split('\n');
+  const nodes: NodeLine[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    const parts = trimmed.split(':');
+    if (parts.length >= 5) {
+      nodes.push({
+        customPrefix: parts[0],
+        ip: parts[1],
+        port: parseInt(parts[2], 10),
+        user: parts[3],
+        pass: parts.slice(4).join(':'),
+      });
+    } else if (parts.length >= 4) {
+      nodes.push({
+        ip: parts[0],
+        port: parseInt(parts[1], 10),
+        user: parts[2],
+        pass: parts.slice(3).join(':'),
+      });
+    }
+  }
+  return nodes;
 }
 
 export default function PortalPage() {
@@ -58,10 +118,22 @@ export default function PortalPage() {
   const [clients, setClients] = useState<PortalClientView[]>([]);
   const [loading, setLoading] = useState(false);
   const [loginLoading, setLoginLoading] = useState(false);
-  const [createLoading, setCreateLoading] = useState(false);
+
+  const [genValues, setGenValues] = useState<GenValues>(DEFAULT_GEN);
+  const [genNamingMode, setGenNamingMode] = useState<'ip' | 'seq'>('seq');
+  const [nodeInput, setNodeInput] = useState('');
+  const [parsedNodes, setParsedNodes] = useState<NodeLine[]>([]);
+  const [previewEmails, setPreviewEmails] = useState<string[]>([]);
+  const [creating, setCreating] = useState(false);
+  const prefilledRef = useRef(false);
+
+  const [qrOpen, setQrOpen] = useState(false);
+  const [qrClient, setQrClient] = useState<PortalClientView | null>(null);
+  const [qrLinks, setQrLinks] = useState<PortalClientLinks | null>(null);
+  const [qrLoading, setQrLoading] = useState(false);
+
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
-  const [createForm] = Form.useForm<CreateFormValues>();
   const [pwdForm] = Form.useForm<{ oldPassword: string; newPassword: string }>();
 
   const authHeaders = useCallback(
@@ -87,6 +159,10 @@ export default function PortalPage() {
       setStatus(meMsg.obj ?? null);
       setInbounds(Array.isArray(inboundMsg.obj) ? inboundMsg.obj : []);
       setClients(Array.isArray(clientMsg.obj) ? clientMsg.obj : []);
+      if (meMsg.obj && !prefilledRef.current) {
+        prefilledRef.current = true;
+        setGenValues((v) => ({ ...v, totalGB: Math.round(meMsg.obj!.trafficLimit / SizeFormatter.ONE_GB) }));
+      }
     } finally {
       setLoading(false);
     }
@@ -119,27 +195,100 @@ export default function PortalPage() {
     setClients([]);
   };
 
-  const createClient = async (values: CreateFormValues) => {
-    setCreateLoading(true);
+  const onNodeInputChange = (value: string) => {
+    setNodeInput(value);
+    setParsedNodes(parseNodes(value));
+  };
+
+  const onGenerate = () => {
+    if (parsedNodes.length === 0) {
+      messageApi.error('请先输入有效的节点列表（格式：IP:端口:账号:密码）');
+      return;
+    }
+    if (!genValues.inboundId) {
+      messageApi.error('请选择一个目标入站');
+      return;
+    }
+    const emails: string[] = [];
+    let currentNum = genValues.startNum;
+    for (const node of parsedNodes) {
+      let email: string;
+      if (genValues.namingMode === 'seq') {
+        let numStr = currentNum.toString();
+        while (numStr.length < genValues.padLength) numStr = '0' + numStr;
+        email = `${genValues.emailPrefix}${numStr}${genValues.emailSuffix}`;
+        currentNum++;
+      } else if (node.customPrefix) {
+        email = `${node.customPrefix}${node.ip}${genValues.emailSuffix}`;
+      } else {
+        email = `${genValues.emailPrefix}${node.ip}${genValues.emailSuffix}`;
+      }
+      emails.push(email);
+    }
+    setPreviewEmails(emails);
+    messageApi.success(`✅ 已生成 ${emails.length} 个客户端预览`);
+  };
+
+  const onCreate = async () => {
+    if (previewEmails.length === 0) {
+      messageApi.warning('请先生成预览');
+      return;
+    }
+    if (!genValues.inboundId) {
+      messageApi.error('请选择一个目标入站');
+      return;
+    }
+    setCreating(true);
     try {
+      const targetInbound = inbounds.find((ib) => ib.id === genValues.inboundId);
+      const shouldSetFlow = genValues.enableVision && targetInbound?.protocol === 'vless';
       const payload = {
-        inboundId: values.inboundId,
-        email: values.email,
-        totalGB: Math.round((values.totalGB || 0) * SizeFormatter.ONE_GB),
-        expiryTime: (values.expiryDays || 0) > 0 ? Date.now() + (values.expiryDays || 0) * DAY_MS : 0,
+        inboundId: genValues.inboundId,
+        clients: previewEmails.map((email) => ({
+          email,
+          totalGB: Math.round((genValues.totalGB || 0) * SizeFormatter.ONE_GB),
+          expiryTime: (genValues.expiryDays || 0) > 0 ? Date.now() + (genValues.expiryDays || 0) * DAY_MS : 0,
+          flow: shouldSetFlow ? 'xtls-rprx-vision' : '',
+        })),
       };
-      const msg = await HttpUtil.post('/portal/api/clients', payload, authHeaders(JSON_HEADERS.headers));
+      const msg = await HttpUtil.post<{ created?: { created?: number; skipped?: unknown[] } }>(
+        '/portal/api/clients/bulk',
+        payload,
+        authHeaders(JSON_HEADERS.headers),
+      );
       if (msg?.success) {
-        messageApi.success('客户端已创建');
-        createForm.resetFields();
+        const created = msg.obj?.created?.created ?? previewEmails.length;
+        messageApi.success(`✅ 已创建 ${created} 个客户端`);
+        setPreviewEmails([]);
         void loadAll();
       } else {
         messageApi.error(msg?.msg || '创建失败');
       }
     } finally {
-      setCreateLoading(false);
+      setCreating(false);
     }
   };
+
+  const openQr = useCallback(async (row: PortalClientView) => {
+    setQrClient(row);
+    setQrOpen(true);
+    setQrLinks(null);
+    setQrLoading(true);
+    try {
+      const msg = await HttpUtil.get<PortalClientLinks>(
+        `/portal/api/clients/links/${encodeURIComponent(row.email)}`,
+        undefined,
+        { ...authHeaders(), silent: true },
+      );
+      if (msg?.success) {
+        setQrLinks(msg.obj ?? null);
+      } else {
+        messageApi.error(msg?.msg || '获取链接失败');
+      }
+    } finally {
+      setQrLoading(false);
+    }
+  }, [authHeaders, messageApi]);
 
   const deleteClient = useCallback((row: PortalClientView) => {
     Modal.confirm({
@@ -221,14 +370,15 @@ export default function PortalPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 90,
+      width: 170,
       render: (_v, r) => (
-        <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteClient(r)}>
-          删除
-        </Button>
+        <Space>
+          <Button size="small" icon={<QrcodeOutlined />} onClick={() => void openQr(r)}>二维码</Button>
+          <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteClient(r)}>删除</Button>
+        </Space>
       ),
     },
-  ], [inboundLabel, deleteClient]);
+  ], [inboundLabel, deleteClient, openQr]);
 
   const pageClass = useMemo(() => {
     const classes = ['portal-page'];
@@ -296,30 +446,141 @@ export default function PortalPage() {
               </Card>
             )}
 
-            <Card size="small" title="添加客户端" style={{ marginBottom: 16 }}>
-              <Form form={createForm} layout="inline" onFinish={(v) => void createClient(v)} style={{ rowGap: 12 }}>
-                <Form.Item name="inboundId" label="目标入站" rules={[{ required: true, message: '请选择入站' }]} style={{ minWidth: 220 }}>
-                  <Select
-                    placeholder="选择入站"
-                    options={inbounds.map((ib) => ({ value: ib.id, label: inboundLabel(ib.id) }))}
-                    showSearch={{ optionFilterProp: 'label' }}
-                  />
-                </Form.Item>
-                <Form.Item name="email" label="客户端邮箱" rules={[{ required: true, message: '请输入邮箱' }]}>
-                  <Input placeholder="如 user-001" />
-                </Form.Item>
-                <Form.Item name="totalGB" label="流量 (GB)" initialValue={0}>
-                  <InputNumber min={0} style={{ width: 120 }} placeholder="0=不限" />
-                </Form.Item>
-                <Form.Item name="expiryDays" label="有效期 (天)" initialValue={0}>
-                  <InputNumber min={0} style={{ width: 110 }} placeholder="0=永久" />
-                </Form.Item>
-                <Form.Item>
-                  <Button type="primary" htmlType="submit" icon={<PlusOutlined />} loading={createLoading}>
-                    添加
+            <Card size="small" title="🚀 客户端生成" style={{ marginBottom: 16 }}>
+              <Row gutter={[16, 12]}>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="Email 前缀" style={{ marginBottom: 0 }}>
+                    <Input
+                      defaultValue={DEFAULT_GEN.emailPrefix}
+                      onChange={(e) => setGenValues((v) => ({ ...v, emailPrefix: e.target.value }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="Email 后缀" style={{ marginBottom: 0 }}>
+                    <Input
+                      defaultValue={DEFAULT_GEN.emailSuffix}
+                      onChange={(e) => setGenValues((v) => ({ ...v, emailSuffix: e.target.value }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="流量限制 (GB)" style={{ marginBottom: 0 }}>
+                    <InputNumber
+                      style={{ width: '100%' }}
+                      min={0}
+                      value={genValues.totalGB}
+                      onChange={(v) => setGenValues((prev) => ({ ...prev, totalGB: v || 0 }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="有效期天数 (0=永久)" style={{ marginBottom: 0 }}>
+                    <InputNumber
+                      style={{ width: '100%' }}
+                      min={0}
+                      value={genValues.expiryDays}
+                      onChange={(v) => setGenValues((prev) => ({ ...prev, expiryDays: v || 0 }))}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="目标入站" style={{ marginBottom: 0 }}>
+                    <Select
+                      style={{ width: '100%' }}
+                      placeholder="选择入站"
+                      value={genValues.inboundId || undefined}
+                      onChange={(v) => setGenValues((prev) => ({ ...prev, inboundId: v }))}
+                      options={inbounds.map((ib) => ({ value: ib.id, label: inboundLabel(ib.id) }))}
+                      showSearch={{ optionFilterProp: 'label' }}
+                    />
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="命名规则" style={{ marginBottom: 0 }}>
+                    <select
+                      style={{ width: '100%', height: 32, border: '1px solid #d9d9d9', borderRadius: 6, padding: '0 8px' }}
+                      value={genValues.namingMode}
+                      onChange={(e) => {
+                        const val = e.target.value as 'ip' | 'seq';
+                        setGenNamingMode(val);
+                        setGenValues((prev) => ({ ...prev, namingMode: val }));
+                      }}
+                    >
+                      <option value="ip">使用 IP 命名</option>
+                      <option value="seq">顺序数字命名</option>
+                    </select>
+                  </Form.Item>
+                </Col>
+                <Col xs={24} sm={12} md={6}>
+                  <Form.Item label="XTLS Vision Flow" style={{ marginBottom: 0 }}>
+                    <Space>
+                      <Switch
+                        checked={genValues.enableVision}
+                        onChange={(v) => setGenValues((prev) => ({ ...prev, enableVision: v }))}
+                      />
+                      <Text type="secondary" style={{ fontSize: 12 }}>
+                        {inbounds.find((ib) => ib.id === genValues.inboundId)?.protocol === 'vless' ? '' : ' (仅 VLESS 生效)'}
+                      </Text>
+                    </Space>
+                  </Form.Item>
+                </Col>
+                {genNamingMode === 'seq' && (
+                  <>
+                    <Col xs={24} sm={12} md={6}>
+                      <Form.Item label="起始数字" style={{ marginBottom: 0 }}>
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={1}
+                          value={genValues.startNum}
+                          onChange={(v) => setGenValues((prev) => ({ ...prev, startNum: v || 1 }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                    <Col xs={24} sm={12} md={6}>
+                      <Form.Item label="补零位数" style={{ marginBottom: 0 }}>
+                        <InputNumber
+                          style={{ width: '100%' }}
+                          min={1}
+                          max={5}
+                          value={genValues.padLength}
+                          onChange={(v) => setGenValues((prev) => ({ ...prev, padLength: v || 2 }))}
+                        />
+                      </Form.Item>
+                    </Col>
+                  </>
+                )}
+              </Row>
+              <div style={{ marginTop: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12 }}>
+                  上游节点列表（用于生成客户端命名） 格式: <Text code>前缀:IP:端口:账号:密码</Text> 或 <Text code>IP:端口:账号:密码</Text>
+                </Text>
+                <TextArea
+                  rows={4}
+                  value={nodeInput}
+                  onChange={(e) => onNodeInputChange(e.target.value)}
+                  placeholder={'香港节点:198.65.65.250:7176:user:pass\n日本节点:198.65.122.168:6808:user:pass'}
+                  style={{ marginTop: 8 }}
+                />
+              </div>
+              <Space style={{ marginTop: 12 }} wrap>
+                <Button type="primary" icon={<ThunderboltOutlined />} onClick={onGenerate}>
+                  生成预览
+                </Button>
+                {previewEmails.length > 0 && (
+                  <Button type="primary" icon={<SendOutlined />} loading={creating} onClick={() => void onCreate()}>
+                    创建 {previewEmails.length} 个客户端
                   </Button>
-                </Form.Item>
-              </Form>
+                )}
+              </Space>
+              {previewEmails.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <Text strong>预览（{previewEmails.length} 个）：</Text>
+                  <Space wrap size={4} style={{ marginTop: 8 }}>
+                    {previewEmails.map((email) => <Tag key={email} color="blue">{email}</Tag>)}
+                  </Space>
+                </div>
+              )}
               {remaining !== null && remaining === 0 && (
                 <Alert type="warning" showIcon style={{ marginTop: 12 }} message="已达到客户端数量上限，无法继续添加。" />
               )}
@@ -340,6 +601,50 @@ export default function PortalPage() {
           </div>
         </Layout.Content>
       </Layout>
+
+      <Modal
+        title={`二维码 / 链接 — ${qrClient?.email || ''}`}
+        open={qrOpen}
+        onCancel={() => setQrOpen(false)}
+        footer={<Button onClick={() => setQrOpen(false)}>关闭</Button>}
+        destroyOnHidden
+      >
+        {qrLoading ? (
+          <div style={{ textAlign: 'center', padding: 24 }}>
+            <Spin />
+          </div>
+        ) : qrLinks && (qrLinks.links.length > 0 || qrLinks.subLink) ? (
+          <Collapse
+            defaultActiveKey={qrLinks.subLink ? ['sub'] : qrLinks.links.length > 0 ? ['l0'] : []}
+            items={[
+              ...(qrLinks.subLink
+                ? [{
+                    key: 'sub',
+                    label: '订阅链接',
+                    children: (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                        <QrPanel value={qrLinks.subLink} remark={`${qrClient?.email || ''} — 订阅`} size={200} />
+                        <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{qrLinks.subLink}</Text>
+                      </div>
+                    ),
+                  }]
+                : []),
+              ...qrLinks.links.map((link, idx) => ({
+                key: `l${idx}`,
+                label: `分享链接 ${idx + 1}`,
+                children: (
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8 }}>
+                    <QrPanel value={link} remark={`${qrClient?.email || ''} #${idx + 1}`} size={200} />
+                    <Text copyable style={{ wordBreak: 'break-all', maxWidth: 420 }}>{link}</Text>
+                  </div>
+                ),
+              })),
+            ]}
+          />
+        ) : (
+          <Alert type="info" showIcon message="该客户端暂无可用链接（可能订阅未开启或入站不支持分享链接）。" />
+        )}
+      </Modal>
 
       <Modal
         title="修改密码"

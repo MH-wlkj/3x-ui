@@ -570,10 +570,17 @@ export const PanelUserSchema = z.object({
   enable: z.boolean(),
   id: z.number().int(),
   inboundIds: z.array(z.number().int()),
+  trafficLimit: z.number().int(),
   updatedAt: z.number().int(),
   username: z.string(),
 });
 export type PanelUser = z.infer<typeof PanelUserSchema>;
+
+export const PortalClientLinksSchema = z.object({
+  links: z.array(z.string()),
+  subLink: z.string(),
+});
+export type PortalClientLinks = z.infer<typeof PortalClientLinksSchema>;
 
 export const PortalClientViewSchema = z.object({
   createdAt: z.number().int(),
@@ -583,6 +590,7 @@ export const PortalClientViewSchema = z.object({
   expiryTime: z.number().int(),
   inboundId: z.number().int(),
   inboundTag: z.string(),
+  subId: z.string(),
   totalGB: z.number().int(),
   up: z.number().int(),
 });
@@ -642,6 +650,7 @@ export const UserStatusSchema = z.object({
   clientLimit: z.number().int(),
   id: z.number().int(),
   inboundIds: z.array(z.number().int()),
+  trafficLimit: z.number().int(),
   usedClients: z.number().int(),
   username: z.string(),
 });

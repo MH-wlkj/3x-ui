@@ -1544,9 +1544,10 @@ export const sections: readonly Section[] = [
           { name: 'password', in: 'body (json)', type: 'string', desc: 'Tenant password (stored hashed).' },
           { name: 'inboundIds', in: 'body (json)', type: 'integer[]', desc: 'Inbound ids this tenant may target.' },
           { name: 'clientLimit', in: 'body (json)', type: 'integer', desc: 'Max total clients the tenant may create. 0 = unlimited.' },
+          { name: 'trafficLimit', in: 'body (json)', type: 'number', desc: 'Default per-client traffic cap in bytes (also caps client values). 0 = unlimited.', optional: true },
           { name: 'enable', in: 'body (json)', type: 'boolean', desc: 'Whether the account is active. Defaults to true.', optional: true },
         ],
-        body: '{\n  "username": "reseller1",\n  "password": "secret",\n  "inboundIds": [1, 2],\n  "clientLimit": 50,\n  "enable": true\n}',
+        body: '{\n  "username": "reseller1",\n  "password": "secret",\n  "inboundIds": [1, 2],\n  "clientLimit": 50,\n  "trafficLimit": 0,\n  "enable": true\n}',
         response: '{\n  "success": true,\n  "msg": "user created"\n}',
       },
       {
@@ -1559,9 +1560,10 @@ export const sections: readonly Section[] = [
           { name: 'password', in: 'body (json)', type: 'string', desc: 'New password (blank = keep).', optional: true },
           { name: 'inboundIds', in: 'body (json)', type: 'integer[]', desc: 'Allowed inbound ids.' },
           { name: 'clientLimit', in: 'body (json)', type: 'integer', desc: 'Max total clients. 0 = unlimited.' },
+          { name: 'trafficLimit', in: 'body (json)', type: 'number', desc: 'Default per-client traffic cap in bytes. 0 = unlimited.', optional: true },
           { name: 'enable', in: 'body (json)', type: 'boolean', desc: 'Whether the account is active.' },
         ],
-        body: '{\n  "id": 1,\n  "username": "reseller1",\n  "inboundIds": [1, 2],\n  "clientLimit": 50,\n  "enable": true\n}',
+        body: '{\n  "id": 1,\n  "username": "reseller1",\n  "inboundIds": [1, 2],\n  "clientLimit": 50,\n  "trafficLimit": 0,\n  "enable": true\n}',
         response: '{\n  "success": true,\n  "msg": "user updated"\n}',
       },
       {
@@ -1614,11 +1616,28 @@ export const sections: readonly Section[] = [
         body: '{\n  "inboundId": 1,\n  "email": "user-001",\n  "totalGB": 0,\n  "expiryTime": 0\n}',
       },
       {
+        method: 'POST',
+        path: '/portal/api/clients/bulk',
+        summary: 'Create a batch of clients on one allowed inbound (enforces inbound permission and client quota). Requires Bearer token.',
+        params: [
+          { name: 'inboundId', in: 'body (json)', type: 'integer', desc: 'Target inbound id (must be assigned to the tenant).' },
+          { name: 'clients', in: 'body (json)', type: 'object[]', desc: 'Array of { email, totalGB, expiryTime } definitions.' },
+        ],
+        body: '{\n  "inboundId": 1,\n  "clients": [\n    { "email": "user-001", "totalGB": 0, "expiryTime": 0 }\n  ]\n}',
+      },
+      {
         method: 'GET',
         path: '/portal/api/clients',
         summary: 'List the tenant\u2019s own clients with usage and expiry. Requires Bearer token.',
         responseSchemaArray: true,
         responseSchema: 'PortalClientView',
+      },
+      {
+        method: 'GET',
+        path: '/portal/api/clients/links/:email',
+        summary: 'Share links and subscription link for one of the tenant\u2019s clients, for QR rendering. Requires Bearer token.',
+        params: [{ name: 'email', in: 'path', type: 'string', desc: 'Client email (must belong to the tenant).' }],
+        responseSchema: 'PortalClientLinks',
       },
       {
         method: 'POST',

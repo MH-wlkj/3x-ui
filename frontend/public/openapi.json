@@ -2324,7 +2324,7 @@
         "type": "object"
       },
       "PanelUser": {
-        "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited).",
+        "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited); TrafficLimit is the\ndefault per-client traffic cap in bytes the tenant's clients are created\nwith (0 = unlimited).",
         "properties": {
           "clientLimit": {
             "type": "integer"
@@ -2345,6 +2345,10 @@
             },
             "type": "array"
           },
+          "trafficLimit": {
+            "format": "int64",
+            "type": "integer"
+          },
           "updatedAt": {
             "format": "int64",
             "type": "integer"
@@ -2359,8 +2363,28 @@
           "enable",
           "id",
           "inboundIds",
+          "trafficLimit",
           "updatedAt",
           "username"
+        ],
+        "type": "object"
+      },
+      "PortalClientLinks": {
+        "description": "PortalClientLinks holds the share links and subscription link for one of the\ntenant's clients, used to render QR codes.",
+        "properties": {
+          "links": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "subLink": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "links",
+          "subLink"
         ],
         "type": "object"
       },
@@ -2391,6 +2415,9 @@
           "inboundTag": {
             "type": "string"
           },
+          "subId": {
+            "type": "string"
+          },
           "totalGB": {
             "format": "int64",
             "type": "integer"
@@ -2408,6 +2435,7 @@
           "expiryTime",
           "inboundId",
           "inboundTag",
+          "subId",
           "totalGB",
           "up"
         ],
@@ -2622,6 +2650,10 @@
             },
             "type": "array"
           },
+          "trafficLimit": {
+            "format": "int64",
+            "type": "integer"
+          },
           "usedClients": {
             "type": "integer"
           },
@@ -2633,6 +2665,7 @@
           "clientLimit",
           "id",
           "inboundIds",
+          "trafficLimit",
           "usedClients",
           "username"
         ],
@@ -11055,6 +11088,7 @@
                       "inboundIds": [
                         0
                       ],
+                      "trafficLimit": 0,
                       "updatedAt": 0,
                       "username": ""
                     }
@@ -11088,6 +11122,7 @@
                   2
                 ],
                 "clientLimit": 50,
+                "trafficLimit": 0,
                 "enable": true
               }
             }
@@ -11142,6 +11177,7 @@
                   2
                 ],
                 "clientLimit": 50,
+                "trafficLimit": 0,
                 "enable": true
               }
             }
@@ -11335,6 +11371,7 @@
                     "inboundIds": [
                       0
                     ],
+                    "trafficLimit": 0,
                     "usedClients": 0,
                     "username": ""
                   }
@@ -11489,10 +11526,113 @@
                       "expiryTime": 0,
                       "inboundId": 0,
                       "inboundTag": "",
+                      "subId": "",
                       "totalGB": 0,
                       "up": 0
                     }
                   ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients/bulk": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Create a batch of clients on one allowed inbound (enforces inbound permission and client quota). Requires Bearer token.",
+        "operationId": "post_portal_api_clients_bulk",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "inboundId": 1,
+                "clients": [
+                  {
+                    "email": "user-001",
+                    "totalGB": 0,
+                    "expiryTime": 0
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients/links/{email}": {
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Share links and subscription link for one of the tenant’s clients, for QR rendering. Requires Bearer token.",
+        "operationId": "get_portal_api_clients_links_email",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email (must belong to the tenant).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/PortalClientLinks"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "links": [
+                      ""
+                    ],
+                    "subLink": ""
+                  }
                 }
               }
             }

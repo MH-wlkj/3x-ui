@@ -44,16 +44,19 @@ type User struct {
 
 // PanelUser represents a tenant account that manages clients on a restricted
 // set of inbounds through the user portal. ClientLimit caps the total number
-// of clients the tenant may create (0 = unlimited).
+// of clients the tenant may create (0 = unlimited); TrafficLimit is the
+// default per-client traffic cap in bytes the tenant's clients are created
+// with (0 = unlimited).
 type PanelUser struct {
-	Id          int    `json:"id" gorm:"primaryKey;autoIncrement"`
-	Username    string `json:"username" gorm:"uniqueIndex"`
-	Password    string `json:"-"`
-	InboundIds  []int  `json:"inboundIds" gorm:"serializer:json"`
-	ClientLimit int    `json:"clientLimit"`
-	Enable      bool   `json:"enable" gorm:"default:true"`
-	CreatedAt   int64  `json:"createdAt"`
-	UpdatedAt   int64  `json:"updatedAt"`
+	Id           int    `json:"id" gorm:"primaryKey;autoIncrement"`
+	Username     string `json:"username" gorm:"uniqueIndex"`
+	Password     string `json:"-"`
+	InboundIds   []int  `json:"inboundIds" gorm:"serializer:json"`
+	ClientLimit  int    `json:"clientLimit"`
+	TrafficLimit int64  `json:"trafficLimit"`
+	Enable       bool   `json:"enable" gorm:"default:true"`
+	CreatedAt    int64  `json:"createdAt"`
+	UpdatedAt    int64  `json:"updatedAt"`
 }
 
 // Inbound represents an Xray inbound configuration with traffic statistics and settings.

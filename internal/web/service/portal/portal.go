@@ -61,7 +61,7 @@ func (s *PortalService) ListUsers() ([]model.PanelUser, error) {
 
 // CreateUser persists a new tenant account. An empty password is rejected; the
 // stored value is always the bcrypt hash.
-func (s *PortalService) CreateUser(username, password string, inboundIds []int, clientLimit int, enable bool) error {
+func (s *PortalService) CreateUser(username, password string, inboundIds []int, clientLimit int, trafficLimit int64, enable bool) error {
 	if strings.TrimSpace(username) == "" {
 		return common.NewError("username is required")
 	}
@@ -74,20 +74,21 @@ func (s *PortalService) CreateUser(username, password string, inboundIds []int, 
 	}
 	now := time.Now().UnixMilli()
 	u := &model.PanelUser{
-		Username:    strings.TrimSpace(username),
-		Password:    hashed,
-		InboundIds:  inboundIds,
-		ClientLimit: clientLimit,
-		Enable:      enable,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		Username:     strings.TrimSpace(username),
+		Password:     hashed,
+		InboundIds:   inboundIds,
+		ClientLimit:  clientLimit,
+		TrafficLimit: trafficLimit,
+		Enable:       enable,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 	return database.GetDB().Create(u).Error
 }
 
 // UpdateUser edits a tenant account. A blank username/password leaves the
 // existing value untouched.
-func (s *PortalService) UpdateUser(id int, username, password string, inboundIds []int, clientLimit int, enable bool) error {
+func (s *PortalService) UpdateUser(id int, username, password string, inboundIds []int, clientLimit int, trafficLimit int64, enable bool) error {
 	var u model.PanelUser
 	if err := database.GetDB().First(&u, id).Error; err != nil {
 		return err
@@ -104,6 +105,7 @@ func (s *PortalService) UpdateUser(id int, username, password string, inboundIds
 	}
 	u.InboundIds = inboundIds
 	u.ClientLimit = clientLimit
+	u.TrafficLimit = trafficLimit
 	u.Enable = enable
 	u.UpdatedAt = time.Now().UnixMilli()
 	return database.GetDB().Save(&u).Error
@@ -170,11 +172,12 @@ func (s *PortalService) UserByToken(token string) (*model.PanelUser, error) {
 
 // UserStatus is the tenant's quota view returned by /me.
 type UserStatus struct {
-	Id          int    `json:"id"`
-	Username    string `json:"username"`
-	InboundIds  []int  `json:"inboundIds"`
-	ClientLimit int    `json:"clientLimit"`
-	UsedClients int    `json:"usedClients"`
+	Id           int    `json:"id"`
+	Username     string `json:"username"`
+	InboundIds   []int  `json:"inboundIds"`
+	ClientLimit  int    `json:"clientLimit"`
+	TrafficLimit int64  `json:"trafficLimit"`
+	UsedClients  int    `json:"usedClients"`
 }
 
 // UserStatus reports how many of the tenant's allowed client slots are used.
@@ -184,11 +187,12 @@ func (s *PortalService) UserStatus(user *model.PanelUser) (*UserStatus, error) {
 		return nil, err
 	}
 	return &UserStatus{
-		Id:          user.Id,
-		Username:    user.Username,
-		InboundIds:  user.InboundIds,
-		ClientLimit: user.ClientLimit,
-		UsedClients: used,
+		Id:           user.Id,
+		Username:     user.Username,
+		InboundIds:   user.InboundIds,
+		ClientLimit:  user.ClientLimit,
+		TrafficLimit: user.TrafficLimit,
+		UsedClients:  used,
 	}, nil
 }
 
@@ -218,6 +222,7 @@ type CreateClientRequest struct {
 	Email      string `json:"email"`
 	TotalGB    int64  `json:"totalGB"`
 	ExpiryTime int64  `json:"expiryTime"`
+	Flow       string `json:"flow"`
 }
 
 // CreateClient validates the target inbound and the quota, then creates one
@@ -238,8 +243,9 @@ func (s *PortalService) CreateClient(user *model.PanelUser, req *CreateClientReq
 	}
 	client := model.Client{
 		Email:      strings.TrimSpace(req.Email),
-		TotalGB:    req.TotalGB,
+		TotalGB:    s.applyTrafficLimit(user, req.TotalGB),
 		ExpiryTime: req.ExpiryTime,
+		Flow:       req.Flow,
 		Enable:     true,
 		Group:      groupTag(user.Id),
 	}
@@ -250,9 +256,57 @@ func (s *PortalService) CreateClient(user *model.PanelUser, req *CreateClientReq
 	return (&service.ClientService{}).Create(&service.InboundService{}, payload)
 }
 
+// CreateClientsRequest carries a batch of client definitions for the portal
+// generator (one inbound, many clients).
+type CreateClientsRequest struct {
+	InboundId int                  `json:"inboundId"`
+	Clients   []CreateClientRequest `json:"clients"`
+}
+
+// CreateClients validates the inbound and quota once for the whole batch, then
+// creates all clients tagged with the tenant's group.
+func (s *PortalService) CreateClients(user *model.PanelUser, req *CreateClientsRequest) (service.BulkCreateResult, bool, error) {
+	if !s.inboundAllowed(user, req.InboundId) {
+		return service.BulkCreateResult{}, false, common.NewError("inbound is not allowed for this account")
+	}
+	if len(req.Clients) == 0 {
+		return service.BulkCreateResult{}, false, common.NewError("no clients to create")
+	}
+	used, err := s.countClients(user)
+	if err != nil {
+		return service.BulkCreateResult{}, false, err
+	}
+	if user.ClientLimit > 0 && used+len(req.Clients) > user.ClientLimit {
+		return service.BulkCreateResult{}, false, common.NewError(fmt.Sprintf("client limit reached: %d/%d", used, user.ClientLimit))
+	}
+	tag := groupTag(user.Id)
+	payloads := make([]service.ClientCreatePayload, 0, len(req.Clients))
+	for _, c := range req.Clients {
+		if strings.TrimSpace(c.Email) == "" {
+			continue
+		}
+		payloads = append(payloads, service.ClientCreatePayload{
+			Client: model.Client{
+				Email:      strings.TrimSpace(c.Email),
+				TotalGB:    s.applyTrafficLimit(user, c.TotalGB),
+				ExpiryTime: c.ExpiryTime,
+				Flow:       c.Flow,
+				Enable:     true,
+				Group:      tag,
+			},
+			InboundIds: []int{req.InboundId},
+		})
+	}
+	if len(payloads) == 0 {
+		return service.BulkCreateResult{}, false, common.NewError("no valid clients to create")
+	}
+	return (&service.ClientService{}).BulkCreate(&service.InboundService{}, payloads)
+}
+
 // PortalClientView is one tenant-owned client for the /clients list.
 type PortalClientView struct {
 	Email      string `json:"email"`
+	SubId      string `json:"subId"`
 	InboundId  int    `json:"inboundId"`
 	InboundTag string `json:"inboundTag"`
 	Enable     bool   `json:"enable"`
@@ -285,6 +339,7 @@ func (s *PortalService) ListClients(user *model.PanelUser) ([]PortalClientView, 
 			seen[cl.Email] = true
 			view := PortalClientView{
 				Email:      cl.Email,
+				SubId:      cl.SubID,
 				InboundId:  id,
 				InboundTag: inbound.Tag,
 				Enable:     cl.Enable,
@@ -379,4 +434,66 @@ func (s *PortalService) ownsClient(user *model.PanelUser, email string, inboundS
 		}
 	}
 	return false
+}
+
+// PortalClientLinks holds the share links and subscription link for one of the
+// tenant's clients, used to render QR codes.
+type PortalClientLinks struct {
+	Links   []string `json:"links"`
+	SubLink string   `json:"subLink"`
+}
+
+// ClientLinks returns the tenant's own client's share links plus its
+// subscription link when subscriptions are enabled.
+func (s *PortalService) ClientLinks(user *model.PanelUser, email, host string, settingSvc *service.SettingService) (*PortalClientLinks, error) {
+	inboundSvc := &service.InboundService{}
+	if !s.ownsClient(user, email, inboundSvc) {
+		return nil, common.NewError("client not found for this account")
+	}
+	out := &PortalClientLinks{}
+	var err error
+	out.Links, err = inboundSvc.GetAllClientLinks(host, email)
+	if err != nil {
+		return nil, err
+	}
+	if subEnable, e := settingSvc.GetSubEnable(); e == nil && subEnable {
+		if subURI, e2 := settingSvc.GetSubURI(); e2 == nil && subURI != "" {
+			if subId, e3 := s.clientSubId(user, email, inboundSvc); e3 == nil && subId != "" {
+				out.SubLink = subURI + subId
+			}
+		}
+	}
+	return out, nil
+}
+
+func (s *PortalService) clientSubId(user *model.PanelUser, email string, inboundSvc *service.InboundService) (string, error) {
+	tag := groupTag(user.Id)
+	for _, id := range user.InboundIds {
+		inbound, err := inboundSvc.GetInbound(id)
+		if err != nil {
+			continue
+		}
+		clients, err := inboundSvc.GetClients(inbound)
+		if err != nil {
+			continue
+		}
+		for _, cl := range clients {
+			if cl.Email == email && cl.Group == tag {
+				return cl.SubID, nil
+			}
+		}
+	}
+	return "", common.NewError("client not found")
+}
+
+// applyTrafficLimit caps a per-client traffic value at the tenant's limit and
+// uses the limit as the default when the client requests unlimited.
+func (s *PortalService) applyTrafficLimit(user *model.PanelUser, totalGB int64) int64 {
+	if user.TrafficLimit <= 0 {
+		return totalGB
+	}
+	if totalGB <= 0 || totalGB > user.TrafficLimit {
+		return user.TrafficLimit
+	}
+	return totalGB
 }

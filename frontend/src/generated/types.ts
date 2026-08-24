@@ -537,8 +537,14 @@ export interface PanelUser {
   enable: boolean;
   id: number;
   inboundIds: number[];
+  trafficLimit: number;
   updatedAt: number;
   username: string;
+}
+
+export interface PortalClientLinks {
+  links: string[];
+  subLink: string;
 }
 
 export interface PortalClientView {
@@ -549,6 +555,7 @@ export interface PortalClientView {
   expiryTime: number;
   inboundId: number;
   inboundTag: string;
+  subId: string;
   totalGB: number;
   up: number;
 }
@@ -603,6 +610,7 @@ export interface UserStatus {
   clientLimit: number;
   id: number;
   inboundIds: number[];
+  trafficLimit: number;
   usedClients: number;
   username: string;
 }

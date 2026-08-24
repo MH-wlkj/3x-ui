@@ -13,12 +13,13 @@ import (
 )
 
 type portalUserForm struct {
-	Id          int    `json:"id" form:"id"`
-	Username    string `json:"username" form:"username"`
-	Password    string `json:"password" form:"password"`
-	InboundIds  []int  `json:"inboundIds" form:"inboundIds"`
-	ClientLimit int    `json:"clientLimit" form:"clientLimit"`
-	Enable      *bool  `json:"enable" form:"enable"`
+	Id           int    `json:"id" form:"id"`
+	Username     string `json:"username" form:"username"`
+	Password     string `json:"password" form:"password"`
+	InboundIds   []int  `json:"inboundIds" form:"inboundIds"`
+	ClientLimit  int    `json:"clientLimit" form:"clientLimit"`
+	TrafficLimit int64  `json:"trafficLimit" form:"trafficLimit"`
+	Enable       *bool  `json:"enable" form:"enable"`
 }
 
 type portalLoginForm struct {
@@ -51,6 +52,7 @@ type PortalController struct {
 	userService    panel.UserService
 	clientService  service.ClientService
 	inboundService service.InboundService
+	settingService service.SettingService
 }
 
 func NewPortalController(g *gin.RouterGroup) *PortalController {
@@ -83,7 +85,9 @@ func (a *PortalController) initTokenRouter(g *gin.RouterGroup) {
 	g.GET("/me", a.portalTokenAuth, a.portalStatus)
 	g.GET("/inbounds", a.portalTokenAuth, a.portalInbounds)
 	g.POST("/clients", a.portalTokenAuth, a.portalCreateClient)
+	g.POST("/clients/bulk", a.portalTokenAuth, a.portalCreateClients)
 	g.GET("/clients", a.portalTokenAuth, a.portalListClients)
+	g.GET("/clients/links/:email", a.portalTokenAuth, a.portalClientLinks)
 	g.POST("/clients/delete", a.portalTokenAuth, a.portalDeleteClient)
 	g.POST("/password", a.portalTokenAuth, a.portalChangePassword)
 }
@@ -105,7 +109,7 @@ func (a *PortalController) createUser(c *gin.Context) {
 	if form.Enable != nil {
 		enable = *form.Enable
 	}
-	if err := a.portalService.CreateUser(form.Username, form.Password, form.InboundIds, form.ClientLimit, enable); err != nil {
+	if err := a.portalService.CreateUser(form.Username, form.Password, form.InboundIds, form.ClientLimit, form.TrafficLimit, enable); err != nil {
 		pureJsonMsg(c, http.StatusOK, false, err.Error())
 		return
 	}
@@ -126,7 +130,7 @@ func (a *PortalController) updateUser(c *gin.Context) {
 	if form.Enable != nil {
 		enable = *form.Enable
 	}
-	if err := a.portalService.UpdateUser(form.Id, form.Username, form.Password, form.InboundIds, form.ClientLimit, enable); err != nil {
+	if err := a.portalService.UpdateUser(form.Id, form.Username, form.Password, form.InboundIds, form.ClientLimit, form.TrafficLimit, enable); err != nil {
 		pureJsonMsg(c, http.StatusOK, false, err.Error())
 		return
 	}
@@ -222,6 +226,23 @@ func (a *PortalController) portalCreateClient(c *gin.Context) {
 	}
 	needRestart, err := a.portalService.CreateClient(user, req)
 	jsonObj(c, gin.H{"needRestart": needRestart}, err)
+}
+
+func (a *PortalController) portalCreateClients(c *gin.Context) {
+	user := a.portalUser(c)
+	form := &portal.CreateClientsRequest{}
+	if err := c.ShouldBind(form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	result, needRestart, err := a.portalService.CreateClients(user, form)
+	jsonObj(c, gin.H{"needRestart": needRestart, "created": result}, err)
+}
+
+func (a *PortalController) portalClientLinks(c *gin.Context) {
+	user := a.portalUser(c)
+	links, err := a.portalService.ClientLinks(user, c.Param("email"), resolveHost(c), &a.settingService)
+	jsonObj(c, links, err)
 }
 
 func (a *PortalController) portalListClients(c *gin.Context) {

@@ -2298,7 +2298,7 @@ export const SCHEMAS: Record<string, unknown> = {
     "type": "object"
   },
   "PanelUser": {
-    "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited).",
+    "description": "PanelUser represents a tenant account that manages clients on a restricted\nset of inbounds through the user portal. ClientLimit caps the total number\nof clients the tenant may create (0 = unlimited); TrafficLimit is the\ndefault per-client traffic cap in bytes the tenant's clients are created\nwith (0 = unlimited).",
     "properties": {
       "clientLimit": {
         "type": "integer"
@@ -2319,6 +2319,10 @@ export const SCHEMAS: Record<string, unknown> = {
         },
         "type": "array"
       },
+      "trafficLimit": {
+        "format": "int64",
+        "type": "integer"
+      },
       "updatedAt": {
         "format": "int64",
         "type": "integer"
@@ -2333,8 +2337,28 @@ export const SCHEMAS: Record<string, unknown> = {
       "enable",
       "id",
       "inboundIds",
+      "trafficLimit",
       "updatedAt",
       "username"
+    ],
+    "type": "object"
+  },
+  "PortalClientLinks": {
+    "description": "PortalClientLinks holds the share links and subscription link for one of the\ntenant's clients, used to render QR codes.",
+    "properties": {
+      "links": {
+        "items": {
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "subLink": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "links",
+      "subLink"
     ],
     "type": "object"
   },
@@ -2365,6 +2389,9 @@ export const SCHEMAS: Record<string, unknown> = {
       "inboundTag": {
         "type": "string"
       },
+      "subId": {
+        "type": "string"
+      },
       "totalGB": {
         "format": "int64",
         "type": "integer"
@@ -2382,6 +2409,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "expiryTime",
       "inboundId",
       "inboundTag",
+      "subId",
       "totalGB",
       "up"
     ],
@@ -2596,6 +2624,10 @@ export const SCHEMAS: Record<string, unknown> = {
         },
         "type": "array"
       },
+      "trafficLimit": {
+        "format": "int64",
+        "type": "integer"
+      },
       "usedClients": {
         "type": "integer"
       },
@@ -2607,6 +2639,7 @@ export const SCHEMAS: Record<string, unknown> = {
       "clientLimit",
       "id",
       "inboundIds",
+      "trafficLimit",
       "usedClients",
       "username"
     ],

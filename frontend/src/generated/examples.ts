@@ -555,8 +555,15 @@ export const EXAMPLES: Record<string, unknown> = {
     "inboundIds": [
       0
     ],
+    "trafficLimit": 0,
     "updatedAt": 0,
     "username": ""
+  },
+  "PortalClientLinks": {
+    "links": [
+      ""
+    ],
+    "subLink": ""
   },
   "PortalClientView": {
     "createdAt": 0,
@@ -566,6 +573,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "expiryTime": 0,
     "inboundId": 0,
     "inboundTag": "",
+    "subId": "",
     "totalGB": 0,
     "up": 0
   },
@@ -619,6 +627,7 @@ export const EXAMPLES: Record<string, unknown> = {
     "inboundIds": [
       0
     ],
+    "trafficLimit": 0,
     "usedClients": 0,
     "username": ""
   }

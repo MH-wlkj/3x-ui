@@ -27,7 +27,7 @@ import {
 import { useTheme } from '@/hooks/useTheme';
 import { usePageTitle } from '@/hooks/usePageTitle';
 import { useInboundOptions } from '@/api/queries/useInboundOptions';
-import { HttpUtil } from '@/utils';
+import { HttpUtil, SizeFormatter } from '@/utils';
 import { setMessageInstance } from '@/utils/messageBus';
 import AppSidebar from '@/layouts/AppSidebar';
 import { type InboundOption } from '@/schemas/client';
@@ -45,6 +45,7 @@ interface UserFormValues {
   password: string;
   inboundIds: number[];
   clientLimit: number;
+  trafficLimit: number;
   enable: boolean;
 }
 
@@ -91,7 +92,7 @@ export default function UsersPage() {
   const openCreate = () => {
     setEditing(null);
     form.resetFields();
-    form.setFieldsValue({ inboundIds: [], clientLimit: 0, enable: true });
+    form.setFieldsValue({ inboundIds: [], clientLimit: 0, trafficLimit: 0, enable: true });
     setModalOpen(true);
   };
 
@@ -104,6 +105,7 @@ export default function UsersPage() {
       password: '',
       inboundIds: user.inboundIds ?? [],
       clientLimit: user.clientLimit,
+      trafficLimit: Math.round((user.trafficLimit || 0) / SizeFormatter.ONE_GB),
       enable: user.enable,
     });
     setModalOpen(true);
@@ -114,7 +116,12 @@ export default function UsersPage() {
     setSaving(true);
     try {
       const url = editing ? '/panel/api/portal/users/update' : '/panel/api/portal/users/create';
-      const msg = await HttpUtil.post(url, { ...values, id: editing?.id }, JSON_HEADERS);
+      const payload = {
+        ...values,
+        id: editing?.id,
+        trafficLimit: Math.round((values.trafficLimit || 0) * SizeFormatter.ONE_GB),
+      };
+      const msg = await HttpUtil.post(url, payload, JSON_HEADERS);
       if (msg?.success) {
         messageApi.success(editing ? '用户已更新' : '用户已创建');
         setModalOpen(false);
@@ -180,6 +187,13 @@ export default function UsersPage() {
       key: 'clientLimit',
       width: 110,
       render: (v: number) => (v > 0 ? `${v} 个` : '不限'),
+    },
+    {
+      title: '流量限制',
+      dataIndex: 'trafficLimit',
+      key: 'trafficLimit',
+      width: 110,
+      render: (v: number) => (v > 0 ? `${Math.round(v / SizeFormatter.ONE_GB)} GB` : '不限'),
     },
     {
       title: '启用',
@@ -283,6 +297,9 @@ export default function UsersPage() {
           </Form.Item>
           <Form.Item name="clientLimit" label="客户端数量上限（0 = 不限）">
             <InputNumber min={0} style={{ width: '100%' }} placeholder="最多可添加的客户端总数" />
+          </Form.Item>
+          <Form.Item name="trafficLimit" label="流量限制 (GB)（0 = 不限，用户客户端默认且不能超过）">
+            <InputNumber min={0} style={{ width: '100%' }} placeholder="每个客户端的默认流量上限" />
           </Form.Item>
           <Form.Item name="enable" label="启用账号" valuePropName="checked">
             <Switch />
