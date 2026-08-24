@@ -45,9 +45,9 @@ export default function LoginPage() {
     setMessageInstance(messageApi);
   }, [messageApi]);
 
-  const [fetched, setFetched] = useState(true);
+  const [fetched] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-  const [twoFactorEnable, setTwoFactorEnable] = useState(false);
+  const [twoFactorEnable] = useState(false);
   const [headlineIndex, setHeadlineIndex] = useState(0);
   const methods = useForm<LoginForm>({ defaultValues: { username: '', password: '', twoFactorCode: '' } });
   const [lang, setLang] = useState<string>(() => LanguageManager.getLanguage());

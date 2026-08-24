@@ -26,6 +26,8 @@ import {
 import type { TableColumnsType } from 'antd';
 import {
   DeleteOutlined,
+  EditOutlined,
+  FileTextOutlined,
   KeyOutlined,
   LogoutOutlined,
   QrcodeOutlined,
@@ -38,8 +40,9 @@ import { useTheme } from '@/hooks/useTheme';
 import { HttpUtil, SizeFormatter } from '@/utils';
 import { setMessageInstance } from '@/utils/messageBus';
 import { QrPanel } from '@/pages/inbounds/qr';
+import BatchQrExportModal from './BatchQrExportModal';
 import type { InboundOption } from '@/schemas/client';
-import type { PortalClientLinks, PortalClientView, UserStatus } from '@/generated/types';
+import type { PortalClientLinks, PortalClientView, PortalNodeView, UserStatus } from '@/generated/types';
 import '@/styles/page-shell.css';
 import '@/styles/page-cards.css';
 import '@/styles/utils.css';
@@ -69,6 +72,17 @@ interface GenValues {
   padLength: number;
   enableVision: boolean;
   outboundProtocol: 'socks' | 'http';
+}
+
+interface EditFormValues {
+  email: string;
+  totalGB: number;
+  expiryDays: number;
+  enable: boolean;
+  address: string;
+  port: number;
+  user: string;
+  pass: string;
 }
 
 const DEFAULT_GEN: GenValues = {
@@ -136,6 +150,14 @@ export default function PortalPage() {
   const [detailClient, setDetailClient] = useState<PortalClientView | null>(null);
   const [qrLinks, setQrLinks] = useState<PortalClientLinks | null>(null);
   const [qrLoading, setQrLoading] = useState(false);
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editClient, setEditClient] = useState<PortalClientView | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<string[]>([]);
+  const [batchExportOpen, setBatchExportOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editForm] = Form.useForm<EditFormValues>();
 
   const [pwdOpen, setPwdOpen] = useState(false);
   const [pwdLoading, setPwdLoading] = useState(false);
@@ -292,6 +314,82 @@ export default function PortalPage() {
     }
   };
 
+  const openEdit = useCallback(async (row: PortalClientView) => {
+    setEditClient(row);
+    setEditLoading(true);
+    setEditOpen(true);
+    try {
+      const nodeMsg = await HttpUtil.get<PortalNodeView>(
+        `/portal/api/clients/node/${encodeURIComponent(row.email)}`,
+        undefined,
+        { ...authHeaders(), silent: true },
+      );
+      const node = nodeMsg?.success ? nodeMsg.obj : null;
+      editForm.setFieldsValue({
+        email: row.email,
+        totalGB: Math.round((row.totalGB || 0) / SizeFormatter.ONE_GB),
+        expiryDays: row.expiryTime > 0 ? Math.max(0, Math.ceil((row.expiryTime - Date.now()) / DAY_MS)) : 0,
+        enable: row.enable,
+        address: node?.address ?? '',
+        port: node?.port ?? 0,
+        user: node?.user ?? '',
+        pass: node?.pass ?? '',
+      });
+    } finally {
+      setEditLoading(false);
+    }
+  }, [authHeaders, editForm]);
+
+  const saveEdit = async () => {
+    const values = await editForm.validateFields();
+    setEditSaving(true);
+    try {
+      const newEmail = values.email.trim();
+      const expiryTime = (values.expiryDays || 0) > 0 ? Date.now() + (values.expiryDays || 0) * DAY_MS : 0;
+      const msg = await HttpUtil.post(
+        '/portal/api/clients/update',
+        {
+          email: editClient?.email,
+          client: {
+            email: newEmail,
+            totalGB: Math.round((values.totalGB || 0) * SizeFormatter.ONE_GB),
+            expiryTime,
+            enable: values.enable,
+          },
+        },
+        authHeaders(JSON_HEADERS.headers),
+      );
+      if (!msg?.success) {
+        messageApi.error(msg?.msg || '更新失败');
+        return;
+      }
+      if (values.address && values.address.trim()) {
+        const nodeMsg = await HttpUtil.post(
+          '/portal/api/xray/node',
+          {
+            email: newEmail,
+            address: values.address.trim(),
+            port: values.port || 0,
+            user: values.user || '',
+            pass: values.pass || '',
+          },
+          authHeaders(JSON_HEADERS.headers),
+        );
+        if (nodeMsg?.success) {
+          messageApi.success('客户端与出站节点已更新');
+        } else {
+          messageApi.warning(`客户端已更新，但出站节点更新失败：${nodeMsg?.msg || ''}`);
+        }
+      } else {
+        messageApi.success('客户端已更新');
+      }
+      setEditOpen(false);
+      void loadAll();
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
   const openDetail = useCallback(async (row: PortalClientView) => {
     setDetailClient(row);
     setDetailOpen(true);
@@ -312,6 +410,30 @@ export default function PortalPage() {
       setQrLoading(false);
     }
   }, [authHeaders, messageApi]);
+
+  const batchDelete = useCallback(() => {
+    if (selectedRowKeys.length === 0) return;
+    Modal.confirm({
+      title: `批量删除 ${selectedRowKeys.length} 个客户端？`,
+      okText: '删除',
+      okButtonProps: { danger: true },
+      cancelText: '取消',
+      onOk: async () => {
+        const msg = await HttpUtil.post<{ deleted?: number }>(
+          '/portal/api/clients/bulk-delete',
+          { emails: selectedRowKeys },
+          authHeaders(JSON_HEADERS.headers),
+        );
+        if (msg?.success) {
+          messageApi.success(`已删除 ${msg.obj?.deleted ?? selectedRowKeys.length} 个客户端`);
+          setSelectedRowKeys([]);
+          void loadAll();
+        } else {
+          messageApi.error(msg?.msg || '删除失败');
+        }
+      },
+    });
+  }, [selectedRowKeys, authHeaders, loadAll, messageApi]);
 
   const deleteClient = useCallback((row: PortalClientView) => {
     Modal.confirm({
@@ -400,15 +522,16 @@ export default function PortalPage() {
     {
       title: '操作',
       key: 'actions',
-      width: 150,
+      width: 220,
       render: (_v, r) => (
         <Space>
+          <Button size="small" icon={<EditOutlined />} onClick={() => void openEdit(r)}>编辑</Button>
           <Button size="small" icon={<QrcodeOutlined />} onClick={() => void openDetail(r)}>详情</Button>
           <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteClient(r)}>删除</Button>
         </Space>
       ),
     },
-  ], [inboundLabel, deleteClient, openDetail]);
+  ], [inboundLabel, deleteClient, openDetail, openEdit]);
 
   const pageClass = useMemo(() => {
     const classes = ['portal-page'];
@@ -652,13 +775,30 @@ export default function PortalPage() {
               )}
             </Card>
 
-            <Card size="small" title={`我的客户端（${clients.length}）`}>
+            <Card
+              size="small"
+              title={`我的客户端（${clients.length}）`}
+              extra={
+                selectedRowKeys.length > 0 ? (
+                  <Space>
+                    <Text type="secondary">已选 {selectedRowKeys.length} 个</Text>
+                    <Button size="small" icon={<FileTextOutlined />} onClick={() => setBatchExportOpen(true)}>
+                      导出二维码/链接
+                    </Button>
+                    <Button size="small" danger icon={<DeleteOutlined />} onClick={batchDelete}>
+                      批量删除
+                    </Button>
+                  </Space>
+                ) : undefined
+              }
+            >
               <Table<PortalClientView>
                 rowKey="email"
                 columns={columns}
                 dataSource={clients}
                 loading={loading}
                 size="small"
+                rowSelection={{ selectedRowKeys, onChange: (keys) => setSelectedRowKeys(keys as string[]) }}
                 pagination={{ pageSize: 10, showSizeChanger: false }}
                 scroll={{ x: 720 }}
                 locale={{ emptyText: '暂无客户端' }}
@@ -746,6 +886,59 @@ export default function PortalPage() {
             </div>
           </>
         )}
+      </Modal>
+
+      <BatchQrExportModal
+        open={batchExportOpen}
+        emails={selectedRowKeys}
+        authHeaders={authHeaders}
+        onOpenChange={setBatchExportOpen}
+      />
+
+      <Modal
+        title={`编辑客户端 — ${editClient?.email || ''}`}
+        open={editOpen}
+        onOk={() => void saveEdit()}
+        onCancel={() => setEditOpen(false)}
+        confirmLoading={editSaving}
+        okText="保存"
+        cancelText="取消"
+        width={520}
+        destroyOnHidden
+      >
+        <Spin spinning={editLoading}>
+          <Form form={editForm} layout="vertical" preserve={false}>
+            <Form.Item name="email" label="邮箱" rules={[{ required: true, message: '请输入邮箱' }]}>
+              <Input placeholder="客户端邮箱" />
+            </Form.Item>
+            <Form.Item name="totalGB" label="流量限制 (GB)（0 = 不限）">
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="expiryDays" label="有效期天数（0 = 永久，保存后从当前时间重新计时）">
+              <InputNumber min={0} style={{ width: '100%' }} />
+            </Form.Item>
+            <Form.Item name="enable" label="启用客户端" valuePropName="checked">
+              <Switch />
+            </Form.Item>
+            <div style={{ borderTop: '1px dashed #d9d9d9', paddingTop: 12, marginTop: 4 }}>
+              <Text type="secondary" style={{ fontSize: 12 }}>
+                出站节点（填写地址即更新；该客户端的出站/路由目标属于面板共享 Xray 配置，改动会同步到主站）
+              </Text>
+              <Form.Item name="address" label="节点地址" style={{ marginTop: 8 }}>
+                <Input placeholder="例如 198.65.65.250（留空则不修改节点）" />
+              </Form.Item>
+              <Form.Item name="port" label="节点端口">
+                <InputNumber min={0} style={{ width: '100%' }} />
+              </Form.Item>
+              <Form.Item name="user" label="账号">
+                <Input placeholder="留空则保持原账号" />
+              </Form.Item>
+              <Form.Item name="pass" label="密码">
+                <Input placeholder="留空则保持原密码" />
+              </Form.Item>
+            </div>
+          </Form>
+        </Spin>
       </Modal>
 
       <Modal

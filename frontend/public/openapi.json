@@ -2496,6 +2496,30 @@
         ],
         "type": "object"
       },
+      "PortalNodeView": {
+        "description": "PortalNodeView is the outbound node (upstream proxy target) for one of the\ntenant's clients.",
+        "properties": {
+          "address": {
+            "type": "string"
+          },
+          "pass": {
+            "type": "string"
+          },
+          "port": {
+            "type": "integer"
+          },
+          "user": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "address",
+          "pass",
+          "port",
+          "user"
+        ],
+        "type": "object"
+      },
       "ProbeResultUI": {
         "properties": {
           "cpuPct": {
@@ -11703,6 +11727,154 @@
         }
       }
     },
+    "/portal/api/clients/node/{email}": {
+      "get": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Outbound node target (address/port/creds) for one of the tenant’s clients. Requires Bearer token.",
+        "operationId": "get_portal_api_clients_node_email",
+        "parameters": [
+          {
+            "name": "email",
+            "in": "path",
+            "required": true,
+            "description": "Client email (must belong to the tenant).",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {
+                      "$ref": "#/components/schemas/PortalNodeView"
+                    }
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "address": "",
+                    "pass": "",
+                    "port": 0,
+                    "user": ""
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients/update": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Edit one of the tenant’s own clients (email, traffic, expiry, enable, flow). Requires Bearer token.",
+        "operationId": "post_portal_api_clients_update",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "email": "user-001",
+                "client": {
+                  "email": "user-001",
+                  "totalGB": 0,
+                  "expiryTime": 0,
+                  "enable": true
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/xray/node": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Update the outbound node target (address/port/creds) for one of the tenant’s clients. The routing rule keeps pointing the client email to the same outbound tag. Changes the shared panel Xray config. Requires Bearer token.",
+        "operationId": "post_portal_api_xray_node",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "email": "user-001",
+                "address": "198.65.65.250",
+                "port": 7176,
+                "user": "u",
+                "pass": "p"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/portal/api/clients/delete": {
       "post": {
         "tags": [
@@ -11738,6 +11910,58 @@
                       "type": "string"
                     },
                     "obj": {}
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/portal/api/clients/bulk-delete": {
+      "post": {
+        "tags": [
+          "Tenant Portal (User Management)"
+        ],
+        "summary": "Delete several of the tenant’s own clients by email (non-owned emails are skipped). Requires Bearer token.",
+        "operationId": "post_portal_api_clients_bulk_delete",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              },
+              "example": {
+                "emails": [
+                  "user-001",
+                  "user-002"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    },
+                    "msg": {
+                      "type": "string"
+                    },
+                    "obj": {}
+                  }
+                },
+                "example": {
+                  "success": true,
+                  "obj": {
+                    "deleted": 2
                   }
                 }
               }

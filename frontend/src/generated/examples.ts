@@ -591,6 +591,12 @@ export const EXAMPLES: Record<string, unknown> = {
     "totalGB": 0,
     "up": 0
   },
+  "PortalNodeView": {
+    "address": "",
+    "pass": "",
+    "port": 0,
+    "user": ""
+  },
   "ProbeResultUI": {
     "cpuPct": 12.5,
     "error": "",

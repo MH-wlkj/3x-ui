@@ -2470,6 +2470,30 @@ export const SCHEMAS: Record<string, unknown> = {
     ],
     "type": "object"
   },
+  "PortalNodeView": {
+    "description": "PortalNodeView is the outbound node (upstream proxy target) for one of the\ntenant's clients.",
+    "properties": {
+      "address": {
+        "type": "string"
+      },
+      "pass": {
+        "type": "string"
+      },
+      "port": {
+        "type": "integer"
+      },
+      "user": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "address",
+      "pass",
+      "port",
+      "user"
+    ],
+    "type": "object"
+  },
   "ProbeResultUI": {
     "properties": {
       "cpuPct": {

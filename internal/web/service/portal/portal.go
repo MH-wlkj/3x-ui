@@ -418,6 +418,24 @@ func (s *PortalService) DeleteClient(user *model.PanelUser, email string) (bool,
 	return (&service.ClientService{}).DeleteByEmail(inboundSvc, email, false)
 }
 
+// DeleteClients removes several of the tenant's own clients by email. Clients
+// the tenant does not own are skipped. Returns how many were deleted.
+func (s *PortalService) DeleteClients(user *model.PanelUser, emails []string) (int, error) {
+	inboundSvc := &service.InboundService{}
+	clientSvc := &service.ClientService{}
+	deleted := 0
+	for _, email := range emails {
+		if strings.TrimSpace(email) == "" || !s.ownsClient(user, email, inboundSvc) {
+			continue
+		}
+		if _, err := clientSvc.DeleteByEmail(inboundSvc, email, false); err != nil {
+			continue
+		}
+		deleted++
+	}
+	return deleted, nil
+}
+
 // ChangePassword verifies the current password and stores the new hash.
 func (s *PortalService) ChangePassword(user *model.PanelUser, oldPassword, newPassword string) error {
 	if !crypto.CheckPasswordHash(user.Password, oldPassword) {
@@ -667,4 +685,192 @@ func (s *PortalService) ownClientEmails(user *model.PanelUser) (map[string]bool,
 		out[e] = true
 	}
 	return out, nil
+}
+
+// UpdateClient edits one of the tenant's own clients' basic fields. The group
+// tag is forced so ownership can never be reassigned, and an omitted flow is
+// preserved so a partial update never strips XTLS Vision from a VLESS client.
+func (s *PortalService) UpdateClient(user *model.PanelUser, email string, updated *model.Client) (bool, error) {
+	inboundSvc := &service.InboundService{}
+	if !s.ownsClient(user, email, inboundSvc) {
+		return false, common.NewError("client not found for this account")
+	}
+	if updated.Flow == "" {
+		if cl, ok := s.findClient(user, email, inboundSvc); ok {
+			updated.Flow = cl.Flow
+		}
+	}
+	updated.Group = groupTag(user.Id)
+	return (&service.ClientService{}).UpdateByEmail(inboundSvc, email, *updated)
+}
+
+// findClient returns one of the tenant's own clients by email.
+func (s *PortalService) findClient(user *model.PanelUser, email string, inboundSvc *service.InboundService) (model.Client, bool) {
+	tag := groupTag(user.Id)
+	for _, id := range user.InboundIds {
+		inbound, err := inboundSvc.GetInbound(id)
+		if err != nil {
+			continue
+		}
+		clients, err := inboundSvc.GetClients(inbound)
+		if err != nil {
+			continue
+		}
+		for _, cl := range clients {
+			if cl.Email == email && cl.Group == tag {
+				return cl, true
+			}
+		}
+	}
+	return model.Client{}, false
+}
+
+// PortalNodeView is the outbound node (upstream proxy target) for one of the
+// tenant's clients.
+type PortalNodeView struct {
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	User    string `json:"user"`
+	Pass    string `json:"pass"`
+}
+
+// ClientNode returns the outbound node target for one of the tenant's clients.
+func (s *PortalService) ClientNode(user *model.PanelUser, email string, settingSvc *service.SettingService) (*PortalNodeView, error) {
+	if !s.ownsClient(user, email, &service.InboundService{}) {
+		return nil, common.NewError("client not found for this account")
+	}
+	cfg, err := loadXrayConfig(settingSvc)
+	if err != nil {
+		return nil, err
+	}
+	outbounds, _ := cfg["outbounds"].([]any)
+	for _, ob := range outbounds {
+		m, ok := ob.(map[string]any)
+		if !ok {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag != email {
+			continue
+		}
+		settings, _ := m["settings"].(map[string]any)
+		servers, _ := settings["servers"].([]any)
+		if len(servers) == 0 {
+			return nil, common.NewError("outbound has no server")
+		}
+		srv, _ := servers[0].(map[string]any)
+		view := &PortalNodeView{}
+		view.Address, _ = srv["address"].(string)
+		if p, ok := srv["port"].(float64); ok {
+			view.Port = int(p)
+		}
+		users, _ := srv["users"].([]any)
+		if len(users) > 0 {
+			if u, ok := users[0].(map[string]any); ok {
+				view.User, _ = u["user"].(string)
+				view.Pass, _ = u["pass"].(string)
+			}
+		}
+		return view, nil
+	}
+	return nil, common.NewError("outbound not found for this client")
+}
+
+// PortalNodeUpdateRequest edits the outbound node target (address/port/creds)
+// for one of the tenant's clients. The routing rule keeps routing the client's
+// email to the same outbound tag, so only the node target changes.
+type PortalNodeUpdateRequest struct {
+	Email   string `json:"email"`
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+	User    string `json:"user"`
+	Pass    string `json:"pass"`
+}
+
+// UpdateClientNode updates the outbound node target for one of the tenant's
+// clients and hot-reloads the running core.
+func (s *PortalService) UpdateClientNode(user *model.PanelUser, req *PortalNodeUpdateRequest, settingSvc *service.SettingService, xraySettingSvc *service.XraySettingService, xraySvc *service.XrayService) error {
+	if !s.ownsClient(user, req.Email, &service.InboundService{}) {
+		return common.NewError("client not found for this account")
+	}
+	if strings.TrimSpace(req.Address) == "" {
+		return common.NewError("address is required")
+	}
+	cfg, err := loadXrayConfig(settingSvc)
+	if err != nil {
+		return err
+	}
+	outbounds, _ := cfg["outbounds"].([]any)
+	found := false
+	for _, ob := range outbounds {
+		m, ok := ob.(map[string]any)
+		if !ok {
+			continue
+		}
+		tag, _ := m["tag"].(string)
+		if tag != req.Email {
+			continue
+		}
+		settings, ok := m["settings"].(map[string]any)
+		if !ok {
+			return common.NewError("outbound has no settings")
+		}
+		servers, _ := settings["servers"].([]any)
+		if len(servers) == 0 {
+			return common.NewError("outbound has no server")
+		}
+		srv, ok := servers[0].(map[string]any)
+		if !ok {
+			return common.NewError("outbound server malformed")
+		}
+		srv["address"] = req.Address
+		if req.Port > 0 {
+			srv["port"] = req.Port
+		}
+		users, _ := srv["users"].([]any)
+		if len(users) > 0 {
+			if u, ok := users[0].(map[string]any); ok {
+				if req.User != "" {
+					u["user"] = req.User
+				}
+				if req.Pass != "" {
+					u["pass"] = req.Pass
+				}
+			}
+		}
+		servers[0] = srv
+		settings["servers"] = servers
+		m["settings"] = settings
+		found = true
+		break
+	}
+	if !found {
+		return common.NewError("outbound not found for this client")
+	}
+	merged, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	if err := xraySettingSvc.SaveXraySetting(string(merged)); err != nil {
+		return err
+	}
+	if xraySvc.IsXrayRunning() {
+		if err := xraySvc.RestartXray(false); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// loadXrayConfig parses the panel's current Xray config template into a map.
+func loadXrayConfig(settingSvc *service.SettingService) (map[string]any, error) {
+	cfgStr, err := settingSvc.GetXrayConfigTemplate()
+	if err != nil {
+		return nil, err
+	}
+	var cfg map[string]any
+	if err := json.Unmarshal([]byte(cfgStr), &cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
 }

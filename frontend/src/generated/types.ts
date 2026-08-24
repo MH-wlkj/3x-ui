@@ -573,6 +573,13 @@ export interface PortalClientView {
   up: number;
 }
 
+export interface PortalNodeView {
+  address: string;
+  pass: string;
+  port: number;
+  user: string;
+}
+
 export interface ProbeResultUI {
   cpuPct: number;
   error: string;

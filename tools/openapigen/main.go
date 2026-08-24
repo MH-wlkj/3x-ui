@@ -89,7 +89,7 @@ func run(root, outDir string) error {
 		},
 		{
 			Path:        resolveRel(root, "internal/web/service/portal"),
-			StructAllow: setOf("UserStatus", "PortalClientView", "PortalClientLinks", "PanelUserView"),
+			StructAllow: setOf("UserStatus", "PortalClientView", "PortalClientLinks", "PanelUserView", "PortalNodeView"),
 		},
 	}
 

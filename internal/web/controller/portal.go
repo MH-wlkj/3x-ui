@@ -90,8 +90,12 @@ func (a *PortalController) initTokenRouter(g *gin.RouterGroup) {
 	g.POST("/clients/bulk", a.portalTokenAuth, a.portalCreateClients)
 	g.GET("/clients", a.portalTokenAuth, a.portalListClients)
 	g.GET("/clients/links/:email", a.portalTokenAuth, a.portalClientLinks)
+	g.GET("/clients/node/:email", a.portalTokenAuth, a.portalClientNode)
+	g.POST("/clients/update", a.portalTokenAuth, a.portalUpdateClient)
 	g.POST("/clients/delete", a.portalTokenAuth, a.portalDeleteClient)
+	g.POST("/clients/bulk-delete", a.portalTokenAuth, a.portalBulkDeleteClients)
 	g.POST("/xray/apply", a.portalTokenAuth, a.portalApplyXray)
+	g.POST("/xray/node", a.portalTokenAuth, a.portalUpdateClientNode)
 	g.POST("/password", a.portalTokenAuth, a.portalChangePassword)
 }
 
@@ -263,6 +267,53 @@ func (a *PortalController) portalDeleteClient(c *gin.Context) {
 	}
 	needRestart, err := a.portalService.DeleteClient(user, form.Email)
 	jsonObj(c, gin.H{"needRestart": needRestart}, err)
+}
+
+func (a *PortalController) portalUpdateClient(c *gin.Context) {
+	user := a.portalUser(c)
+	form := &struct {
+		Email  string       `json:"email"`
+		Client model.Client `json:"client"`
+	}{}
+	if err := c.ShouldBindJSON(form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	needRestart, err := a.portalService.UpdateClient(user, form.Email, &form.Client)
+	jsonObj(c, gin.H{"needRestart": needRestart}, err)
+}
+
+func (a *PortalController) portalClientNode(c *gin.Context) {
+	user := a.portalUser(c)
+	node, err := a.portalService.ClientNode(user, c.Param("email"), &a.settingService)
+	jsonObj(c, node, err)
+}
+
+func (a *PortalController) portalUpdateClientNode(c *gin.Context) {
+	user := a.portalUser(c)
+	form := &portal.PortalNodeUpdateRequest{}
+	if err := c.ShouldBind(form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	if err := a.portalService.UpdateClientNode(user, form, &a.settingService, &a.xraySettingService, &a.xrayService); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	pureJsonMsg(c, http.StatusOK, true, "node updated")
+}
+
+func (a *PortalController) portalBulkDeleteClients(c *gin.Context) {
+	user := a.portalUser(c)
+	form := &struct {
+		Emails []string `json:"emails"`
+	}{}
+	if err := c.ShouldBindJSON(form); err != nil {
+		pureJsonMsg(c, http.StatusOK, false, err.Error())
+		return
+	}
+	deleted, err := a.portalService.DeleteClients(user, form.Emails)
+	jsonObj(c, gin.H{"deleted": deleted}, err)
 }
 
 func (a *PortalController) portalApplyXray(c *gin.Context) {

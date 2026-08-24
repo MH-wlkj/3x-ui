@@ -610,6 +610,14 @@ export const PortalClientViewSchema = z.object({
 });
 export type PortalClientView = z.infer<typeof PortalClientViewSchema>;
 
+export const PortalNodeViewSchema = z.object({
+  address: z.string(),
+  pass: z.string(),
+  port: z.number().int(),
+  user: z.string(),
+});
+export type PortalNodeView = z.infer<typeof PortalNodeViewSchema>;
+
 export const ProbeResultUISchema = z.object({
   cpuPct: z.number(),
   error: z.string(),
