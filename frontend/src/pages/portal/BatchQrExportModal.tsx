@@ -21,6 +21,7 @@ import {
 
 import { HttpUtil } from '@/utils';
 import { qrPngDataUrl } from '@/lib/qr/png';
+import type { PortalClientLinks } from '@/generated/types';
 
 interface BatchQrExportModalProps {
   open: boolean;
@@ -81,15 +82,15 @@ export default function BatchQrExportModal({
     (async () => {
       const results = await Promise.allSettled(
         emails.map(async (email) => {
-          const msg = await HttpUtil.get<string[]>(
+          const msg = await HttpUtil.get<PortalClientLinks>(
             `/portal/api/clients/links/${encodeURIComponent(email)}`,
             undefined,
             { ...authHeaders(), silent: true },
           );
-          if (!msg?.success || !Array.isArray(msg.obj)) {
+          if (!msg?.success || !msg.obj || !Array.isArray(msg.obj.links)) {
             throw new Error(msg?.msg ?? '获取链接失败');
           }
-          return { email, links: msg.obj };
+          return { email, links: msg.obj.links };
         }),
       );
       if (cancelled) return;
